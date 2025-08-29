@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WolfeDesk v0.4.3 - Angela's Trading Empire</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-green: #00ff88;
+            --primary-blue: #00ccff;
+            --danger-red: #ff3366;
+            --warning-yellow: #ffaa00;
+            --bg-dark: #0a0a0a;
+            --bg-darker: #050505;
+            --panel-bg: rgba(0,0,0,0.7);
+            --border-color: rgba(255,255,255,0.1);
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-dark) 0%, #1a1a2e 100%);
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 50%, rgba(0,255,136,0.1) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 80%, rgba(0,204,255,0.1) 0%, transparent 50%);
+            animation: drift 20s infinite alternate;
+        }
+
+        @keyframes drift {
+            0% { transform: translate(-10%, -10%) rotate(0deg); }
+            100% { transform: translate(10%, 10%) rotate(360deg); }
+        }
+
+        .dashboard {
+            position: relative;
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            grid-template-rows: 70px 1fr 100px;
+            height: 100vh;
+            gap: 1px;
+            background: rgba(255,255,255,0.03);
+        }
+
+        /* Header */
+        .header {
+            grid-column: 1 / -1;
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+            border-bottom: 2px solid var(--primary-green);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary-green), var(--primary-blue), var(--primary-green));
+            animation: slide 3s linear infinite;
+        }
+
+        @keyframes slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo-text {
+            font-size: 26px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-green), var(--primary-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(0,255,136,0.1);
+            border: 1px solid rgba(0,255,136,0.3);
+            border-radius: 20px;
+            font-size: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary-green);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.2); }
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .metric-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 18px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            background: rgba(255,255,255,0.05);
+            transform: translateY(-2px);
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary-green), var(--primary-blue));
+        }
+
+        .metric-label {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .metric-value.positive {
+            color: var(--primary-green);
+            text-shadow: 0 0 20px rgba(0,255,136,0.5);
+        }
+
+        .metric-value.negative {
+            color: var(--danger-red);
+            text-shadow: 0 0 20px rgba(255,51,102,0.5);
+        }
+
+        .metric-change {
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 6px;
+        }
+
+        /* Main Content */
+        .main-content {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        /* Risk Monitor */
+        .risk-monitor {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 15px;
+            padding: 25px;
+            position: relative;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--primary-green);
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+
+        .risk-bar-container {
+            position: relative;
+            height: 80px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 40px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .risk-bar {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            border-radius: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 25px;
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .risk-bar.safe {
+            background: linear-gradient(90deg, #00ff88, #00ccff);
+        }
+
+        .risk-bar.warning {
+            background: linear-gradient(90deg, #ffaa00, #ff6600);
+        }
+
+        .risk-bar.danger {
+            background: linear-gradient(90deg, #ff3366, #ff0044);
+            animation: danger-pulse 1s infinite;
+        }
+
+        @keyframes danger-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        .risk-percentage {
+            font-size: 28px;
+            font-weight: 700;
+            color: rgba(0,0,0,0.8);
+            text-shadow: 0 0 10px rgba(255,255,255,0.5);
+        }
+
+        .risk-zones {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 15px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+        }
+
+        /* Positions Table */
+        .positions-section {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 15px;
+            padding: 25px;
+        }
+
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .positions-table th {
+            text-align: left;
+            padding: 12px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .positions-table td {
+            padding: 15px 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 14px;
+        }
+
+        .position-symbol {
+            font-weight: 600;
+            color: var(--primary-blue);
+        }
+
+        .position-pnl.positive {
+            color: var(--primary-green);
+            font-weight: 600;
+        }
+
+        .position-pnl.negative {
+            color: var(--danger-red);
+            font-weight: 600;
+        }
+
+        /* Right Panel */
+        .right-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            overflow-y: auto;
+        }
+
+        /* Strategy Status */
+        .strategy-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .strategy-name {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .strategy-status {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .strategy-status.active {
+            background: rgba(0,255,136,0.2);
+            color: var(--primary-green);
+        }
+
+        .strategy-status.hibernating {
+            background: rgba(255,170,0,0.2);
+            color: var(--warning-yellow);
+        }
+
+        /* Event Log */
+        .event-log {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .event-item {
+            padding: 12px;
+            margin-bottom: 10px;
+            background: rgba(255,255,255,0.02);
+            border-left: 3px solid var(--primary-green);
+            border-radius: 6px;
+            font-size: 13px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .event-time {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 4px;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            grid-column: 1 / -1;
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            border-top: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 30px;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            transform: translate(-50%, -50%);
+            transition: width 0.5s, height 0.5s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-green), var(--primary-blue));
+            color: #000;
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning-yellow), #ff6600);
+            color: #fff;
+        }
+
+        .btn-nuclear {
+            background: linear-gradient(135deg, var(--danger-red), #ff0044);
+            color: #fff;
+            border: 2px solid var(--danger-red);
+            animation: nuclear-glow 2s infinite;
+        }
+
+        @keyframes nuclear-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(255,51,102,0.5); }
+            50% { box-shadow: 0 0 40px rgba(255,51,102,0.8), 0 0 60px rgba(255,51,102,0.4); }
+        }
+
+        /* Angela Override Panel */
+        .angela-panel {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .angela-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 30px;
+        }
+
+        .angela-status.active {
+            background: rgba(0,255,136,0.1);
+            border-color: var(--primary-green);
+        }
+
+        .angela-avatar {
+            width: 30px;
+            height: 30px;
+            background: linear-gradient(135deg, var(--primary-green), var(--primary-blue));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #000;
+        }
+
+        /* Clock */
+        .clock-section {
+            text-align: center;
+        }
+
+        .clock-time {
+            font-size: 24px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            margin-bottom: 5px;
+        }
+
+        .clock-label {
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: linear-gradient(135deg, #1a1a2e, var(--bg-dark));
+            border: 2px solid var(--danger-red);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            text-align: center;
+            animation: modalSlide 0.3s ease-out;
+        }
+
+        @keyframes modalSlide {
+            from { transform: translateY(-50px) scale(0.9); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .dashboard {
+                grid-template-columns: 240px 1fr 280px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <div class="logo-text">WOLFEDESK</div>
+                <div class="logo-status">
+                    <div class="status-dot"></div>
+                    <span>v0.4.3 LIVE</span>
+                </div>
+            </div>
+            <div class="angela-panel">
+                <div class="angela-status active">
+                    <div class="angela-avatar">A</div>
+                    <span>Angela Connected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar Metrics -->
+        <div class="sidebar">
+            <div class="metric-card">
+                <div class="metric-label">Daily P&L</div>
+                <div class="metric-value positive">+$1,847</div>
+                <div class="metric-change">+1.85% • 7 trades</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-label">Account Equity</div>
+                <div class="metric-value">$101,847</div>
+                <div class="metric-change">FTMO Phase 1</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-label">Open Risk</div>
+                <div class="metric-value">$1,220</div>
+                <div class="metric-change">1.20% • 3 positions</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-label">Win Rate</div>
+                <div class="metric-value positive">71.4%</div>
+                <div class="metric-change">Last 20 trades</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-label">Current Streak</div>
+                <div class="metric-value positive">+4</div>
+                <div class="metric-change">Hot streak active</div>
+            </div>
+            
+            <div class="metric-card">
+                <div class="metric-label">Sharpe Ratio</div>
+                <div class="metric-value positive">2.31</div>
+                <div class="metric-change">20-day rolling</div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Risk Monitor -->
+            <div class="risk-monitor">
+                <div class="section-title">
+                    Daily Drawdown Monitor
+                    <div class="live-dot"></div>
+                </div>
+                <div class="risk-bar-container">
+                    <div class="risk-bar safe" style="width: 46%;">
+                        <span class="risk-percentage">1.85%</span>
+                    </div>
+                </div>
+                <div class="risk-zones">
+                    <span>0% SAFE</span>
+                    <span>3.8% SOFT LIMIT</span>
+                    <span>4.0% HARD STOP</span>
+                </div>
+            </div>
+
+            <!-- Open Positions -->
+            <div class="positions-section">
+                <div class="section-title">Open Positions</div>
+                <table class="positions-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Direction</th>
+                            <th>Entry</th>
+                            <th>Current</th>
+                            <th>P&L</th>
+                            <th>Risk</th>
+                            <th>Strategy</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="position-symbol">EURUSD</td>
+                            <td>LONG</td>
+                            <td>1.1042</td>
+                            <td>1.1058</td>
+                            <td class="position-pnl positive">+$160</td>
+                            <td>0.6%</td>
+                            <td>London Breakout</td>
+                        </tr>
+                        <tr>
+                            <td class="position-symbol">XAUUSD</td>
+                            <td>LONG</td>
+                            <td>2048.50</td>
+                            <td>2051.20</td>
+                            <td class="position-pnl positive">+$270</td>
+                            <td>0.5%</td>
+                            <td>Vol Compression</td>
+                        </tr>
+                        <tr>
+                            <td class="position-symbol">USDJPY</td>
+                            <td>SHORT</td>
+                            <td>149.85</td>
+                            <td>149.92</td>
+                            <td class="position-pnl negative">-$70</td>
+                            <td>0.4%</td>
+                            <td>Institutional Flow</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Performance Attribution -->
+            <div class="positions-section">
+                <div class="section-title">Today's Performance Attribution</div>
+                <table class="positions-table">
+                    <thead>
+                        <tr>
+                            <th>Component</th>
+                            <th>Impact</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Entry Alpha</td>
+                            <td class="position-pnl positive">+$482</td>
+                            <td>Superior entry timing</td>
+                        </tr>
+                        <tr>
+                            <td>Exit Alpha</td>
+                            <td class="position-pnl positive">+$318</td>
+                            <td>Optimal exit execution</td>
+                        </tr>
+                        <tr>
+                            <td>Spread Cost</td>
+                            <td class="position-pnl negative">-$87</td>
+                            <td>Broker spread costs</td>
+                        </tr>
+                        <tr>
+                            <td>Slippage</td>
+                            <td class="position-pnl negative">-$42</td>
+                            <td>Execution slippage</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <!-- Strategy Status -->
+            <div>
+                <div class="section-title">Strategy Status</div>
+                <div class="strategy-card">
+                    <span class="strategy-name">London Breakout</span>
+                    <span class="strategy-status active">Active</span>
+                </div>
+                <div class="strategy-card" style="margin-top: 10px;">
+                    <span class="strategy-name">Volatility Compression</span>
+                    <span class="strategy-status active">Active</span>
+                </div>
+                <div class="strategy-card" style="margin-top: 10px;">
+                    <span class="strategy-name">Institutional Flow</span>
+                    <span class="strategy-status hibernating">Hibernating</span>
+                </div>
+            </div>
+
+            <!-- Event Log -->
+            <div>
+                <div class="section-title">Live Event Stream</div>
+                <div class="event-log">
+                    <div class="event-item">
+                        <div class="event-time">14:47:23</div>
+                        <div>✓ London Breakout signal: EURUSD LONG executed</div>
+                    </div>
+                    <div class="event-item">
+                        <div class="event-time">14:45:10</div>
+                        <div>⚠️ Correlation blocked GBPUSD - correlated with EURUSD</div>
+                    </div>
+                    <div class="event-item">
+                        <div class="event-time">14:32:55</div>
+                        <div>📈 Adaptive risk increased to 0.7% (win streak)</div>
+                    </div>
+                    <div class="event-item">
+                        <div class="event-time">14:28:12</div>
+                        <div>💰 Position closed: GBPUSD +$247 (2.47R)</div>
+                    </div>
+                    <div class="event-item">
+                        <div class="event-time">14:15:00</div>
+                        <div>👑 Angela Override: Risk set to 0.8%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Guards Status -->
+            <div>
+                <div class="section-title">Guard Status</div>
+                <div class="strategy-card">
+                    <span class="strategy-name">Daily DD Guard</span>
+                    <span class="strategy-status active">Clear</span>
+                </div>
+                <div class="strategy-card" style="margin-top: 10px;">
+                    <span class="strategy-name">Correlation Filter</span>
+                    <span class="strategy-status active">Active</span>
+                </div>
+                <div class="strategy-card" style="margin-top: 10px;">
+                    <span class="strategy-name">News Blackout</span>
+                    <span class="strategy-status active">Clear</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+            <div class="control-buttons">
+                <button class="btn btn-primary" onclick="pauseTrading()">PAUSE</button>
+                <button class="btn btn-warning" onclick="flattenAll()">FLATTEN ALL</button>
+                <button class="btn btn-nuclear" onclick="showNuclearModal()">☢️ NUCLEAR</button>
+            </div>
+            
+            <div class="clock-section">
+                <div class="clock-time">15:47:32 UTC</div>
+                <div class="clock-label">London Session • Prague Reset in 08:12:28</div>
+            </div>
+            
+            <div class="control-buttons">
+                <button class="btn btn-primary" onclick="showOverrideModal()">ANGELA OVERRIDE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nuclear Modal -->
+    <div class="modal" id="nuclearModal">
+        <div class="modal-content">
+            <h2 style="color: var(--danger-red); margin-bottom: 20px;">⚠️ NUCLEAR PROTOCOL ⚠️</h2>
+            <p style="margin-bottom: 30px; line-height: 1.6;">
+                This will immediately:<br><br>
+                • FLATTEN all positions at market<br>
+                • DISABLE all trading strategies<br>
+                • REQUIRE your cryptographic signature to resume<br>
+                • Lock system until manual unlock<br><br>
+                <strong>Only your signature can reverse this action.</strong>
+            </p>
+            <div style="display: flex; gap: 15px; justify-content: center;">
+                <button class="btn btn-primary" onclick="hideModal()">CANCEL</button>
+                <button class="btn btn-nuclear" onclick="confirmNuclear()">CONFIRM NUCLEAR</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Real-time updates
+        function updateClock() {
+            const now = new Date();
+            const utcTime = now.toUTCString().split(' ')[4];
+            document.querySelector('.clock-time').textContent = utcTime + ' UTC';
+        }
+
+        // Update risk bar color based on percentage
+        function updateRiskBar() {
+            const riskBar = document.querySelector('.risk-bar');
+            const percentage = parseFloat(riskBar.querySelector('.risk-percentage').textContent);
+            
+            riskBar.classList.remove('safe', 'warning', 'danger');
+            
+            if (percentage >= 3.8) {
+                riskBar.classList.add('danger');
+            } else if (percentage >= 3.0) {
+                riskBar.classList.add('warning');
+            } else {
+                riskBar.classList.add('safe');
+            }
+        }
+
+        // Modal functions
+        function showNuclearModal() {
+            document.getElementById('nuclearModal').classList.add('active');
+        }
+
+        function hideModal() {
+            document.getElementById('nuclearModal').classList.remove('active');
+        }
+
+        function confirmNuclear() {
+            alert('NUCLEAR PROTOCOL ACTIVATED\n\nAll positions flattened.\nSystem locked until Angela provides signature.');
+            hideModal();
+        }
+
+        function pauseTrading() {
+            alert('Trading paused. System will continue monitoring but not execute new trades.');
+        }
+
+        function flattenAll() {
+            if (confirm('Flatten all positions immediately at market prices?')) {
+                alert('All positions flattened.');
+            }
+        }
+
+        function showOverrideModal() {
+            const thesis = prompt('Enter your market thesis (e.g., "EURUSD to 1.11 today"):');
+            if (thesis) {
+                alert(`Override accepted: "${thesis}"\nSystem adjusting strategies to align with your thesis.`);
+            }
+        }
+
+        // Start real-time updates
+        setInterval(updateClock, 1000);
+        updateRiskBar();
+
+        // Simulate live events
+        setInterval(() => {
+            const events = [
+                '✓ Correlation check passed for new signal',
+                '📊 Market regime: TRENDING detected',
+                '⚡ Spread normal on all pairs',
+                '🔄 Strategy weights rebalanced',
+                '💚 All systems operational'
+            ];
+            
+            // Randomly add events (in production, these come from WebSocket)
+            if (Math.random() > 0.8) {
+                const eventLog = document.querySelector('.event-log');
+                const newEvent = document.createElement('div');
+                newEvent.className = 'event-item';
+                const time = new Date().toTimeString().split(' ')[0];
+                newEvent.innerHTML = `
+                    <div class="event-time">${time}</div>
+                    <div>${events[Math.floor(Math.random() * events.length)]}</div>
+                `;
+                eventLog.insertBefore(newEvent, eventLog.firstChild);
+                
+                // Keep only 10 events
+                while (eventLog.children.length > 10) {
+                    eventLog.removeChild(eventLog.lastChild);
+                }
+            }
+        }, 5000);
+    </script>
+</body>
+</html>
