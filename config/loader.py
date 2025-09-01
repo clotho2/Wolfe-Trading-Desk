@@ -1,4 +1,4 @@
-# path: config/loader.py (add features.risk_adapter mirror)
+# path: config/loader.py (map ftmo.*)
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,7 +22,6 @@ def _read_yaml(path: Path) -> Dict[str, Any]:
 
 def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
-    # modes
     mode = (doc.get("modes", {}) or {}).get("executor_mode")
     if mode:
         out["EXECUTOR_MODE"] = str(mode).upper()
@@ -62,6 +61,14 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
         out["RISK_FLOOR_PCT"] = float(risk["floor_pct"])
     if "ceiling_pct" in risk:
         out["RISK_CEILING_PCT"] = float(risk["ceiling_pct"])
+    # ftmo
+    ftmo = doc.get("ftmo", {}) or {}
+    if "phase1_pacing_bonus_pct" in ftmo:
+        out["FTMO_PHASE1_PACING_BONUS_PCT"] = float(ftmo["phase1_pacing_bonus_pct"])
+    if "phase2_max_per_trade_risk_pct" in ftmo:
+        out["FTMO_PHASE2_MAX_PER_TRADE_RISK_PCT"] = float(ftmo["phase2_max_per_trade_risk_pct"])
+    if "friday_cutoff_gmt" in ftmo:
+        out["FTMO_FRIDAY_CUTOFF_GMT"] = str(ftmo["friday_cutoff_gmt"])  # "HH:MM"
 
     prof = (doc.get("profile") or "").strip().lower()
     if prof:
