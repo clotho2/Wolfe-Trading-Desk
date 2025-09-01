@@ -1,4 +1,4 @@
-# path: config/settings.py (add risk fields)
+# path: config/settings.py (add FEATURES_RISK_ADAPTER)
 from __future__ import annotations
 from enum import Enum
 from typing import Tuple, Literal, Callable, Any
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
 
     RISK_RATCHET_HALF_AFTER_RED_DAYS: int = 2
 
-    # New Adaptive Risk fields (YAML mirrors under risk.*)
+    # Adaptive Risk
     RISK_MODE: Literal["ratchet", "adaptive", "both"] = "ratchet"
     RISK_FLOOR_PCT: float = 0.25
     RISK_CEILING_PCT: float = 1.50
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     CORR_THRESHOLD_ACTION: Literal["block", "halve"] = "block"
     DXY_BAND_PCT: float = 0.002
 
-    # Gap/Corp-action guard
+    # Gap/Corp-action
     GAP_ALERT_PCT: float = 0.15
 
     # Dashboard
@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     FEATURES_HA_STATUS_BADGE: bool = True
     FEATURES_AUTO_REGISTER_MT5: bool = False
     FEATURES_GAP_GUARD: bool = False
+    FEATURES_RISK_ADAPTER: bool = False
 
     @property
     def REDIS_URL_EFFECTIVE(self) -> str:
@@ -103,28 +104,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-
-# path: data/sample_returns.csv
-# pct_change
-0.004
--0.001
-0.006
-0.003
--0.002
-0.005
-0.004
--0.003
-0.002
--0.001
-0.003
-0.002
-0.001
--0.002
-0.004
-0.003
-0.002
--0.001
-0.001
-0.002
 
