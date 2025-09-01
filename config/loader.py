@@ -1,7 +1,6 @@
-# path: config/loader.py (extend mapping with risk YAML)
+# path: config/loader.py (add features.risk_adapter mirror)
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -23,6 +22,7 @@ def _read_yaml(path: Path) -> Dict[str, Any]:
 
 def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
+    # modes
     mode = (doc.get("modes", {}) or {}).get("executor_mode")
     if mode:
         out["EXECUTOR_MODE"] = str(mode).upper()
@@ -52,6 +52,8 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
         out["FEATURES_AUTO_REGISTER_MT5"] = bool(feats["auto_register_mt5"])  # noqa: FBT003
     if "gap_guard" in feats:
         out["FEATURES_GAP_GUARD"] = bool(feats["gap_guard"])  # noqa: FBT003
+    if "risk_adapter" in feats:
+        out["FEATURES_RISK_ADAPTER"] = bool(feats["risk_adapter"])  # noqa: FBT003
     # risk
     risk = doc.get("risk", {}) or {}
     if "mode" in risk:
