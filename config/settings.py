@@ -1,4 +1,4 @@
-# path: config/settings.py (extend with ENV + auto-register flag)
+# path: config/settings.py (Correlation keys extended)
 from __future__ import annotations
 from enum import Enum
 from typing import Tuple, Literal
@@ -60,10 +60,11 @@ class Settings(BaseSettings):
 
     RISK_RATCHET_HALF_AFTER_RED_DAYS: int = 2
 
-    # Correlation controls
+    # Correlation controls (v0.4.3)
+    CORR_WINDOW_DAYS: int = 20
     CORR_BLOCK_THRESHOLD: float = 0.70
     CORR_THRESHOLD_ACTION: Literal["block", "halve"] = "block"
-    DXY_BAND_BPS: int = 20
+    DXY_BAND_PCT: float = 0.002  # ±0.20%; applies to USD pairs cluster regime
 
     # Dashboard
     DASH_PORT: int = 9090
