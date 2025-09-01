@@ -1,12 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+# ops/dashboard/app.py
+from __future__ import annotations
+
 from typing import Optional
-from config.settings import settings, ExecutorMode
-from ops.audit.immutable_audit import append_event
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import JSONResponse
+
+from config.settings import ExecutorMode, settings
 from engine.timebox import now_prague, prague_reset_countdown
+from ops.audit.immutable_audit import append_event
 
 app = FastAPI(title="WolfeDesk v0.4.3 Dashboard")
+
+
+# ------------------------------ Auth / Headers ------------------------------
 
 def require_token(authorization: Optional[str] = Header(None)):
     token = (authorization or "").removeprefix("Bearer ").strip()
@@ -14,12 +21,26 @@ def require_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
 
-class KillConfirm(BaseModel):
+
+@app.middleware("http")
+async def mode_header(request, call_next):  # type: ignore[no-untyped-def]
+    response = await call_next(request)
+    # Watermark all responses with current executor mode
+    response.headers["X-Wolfe-Mode"] = settings.EXECUTOR_MODE.value
+    return response
+
+
+# --------------------------------- Routes ----------------------------------
+
+
+class KillConfirm(BaseModel := __import__("pydantic").BaseModel):  # local type hint
     confirm: bool
+
 
 @app.get("/health")
 def health():
     return {"status": "ok", "mode": settings.EXECUTOR_MODE.value}
+
 
 @app.get("/snapshot", dependencies=[Depends(require_token)])
 def snapshot():
@@ -30,15 +51,25 @@ def snapshot():
         "mode": settings.EXECUTOR_MODE.value,
     }
 
+
 @app.post("/kill", dependencies=[Depends(require_token)])
 def kill(payload: KillConfirm):
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Confirmation required")
-    # In DRY_RUN/PAPER, we log and simulate close_all()
+
+    # In DRY_RUN/SHADOW, log-only (no side effects). LIVE wiring will close_all().
     evt = {
         "evt": "KILL_ALL",
-        "payload": {"mode": settings.EXECUTOR_MODE.value, "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE},
+        "payload": {
+            "mode": settings.EXECUTOR_MODE.value,
+            "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE,
+        },
     }
     append_event(evt)
-    # TODO: wire adapters.close_all() when adapters are implemented
-    return JSONResponse({"status": "ok", "message": "Kill issued", "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE})
+    return JSONResponse(
+        {
+            "status": "ok",
+            "message": "Kill issued",
+            "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE,
+        }
+    )
