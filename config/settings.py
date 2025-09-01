@@ -1,4 +1,4 @@
-# path: config/settings.py (append feature flags)
+# path: config/settings.py (extend with ENV + auto-register flag)
 from __future__ import annotations
 from enum import Enum
 from typing import Tuple, Literal
@@ -16,6 +16,7 @@ class ExecutorMode(str, Enum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
+    # Identity / Mode
     NODE_ID: str = "EX-44-PRIMARY"
     EXECUTOR_MODE: ExecutorMode = ExecutorMode.DRY_RUN
 
@@ -25,6 +26,9 @@ class Settings(BaseSettings):
         if isinstance(v, str) and v.upper() in {"HONEYPOT", "PAPER"}:
             return ExecutorMode.SHADOW
         return v
+
+    # Environment gate for dev helpers
+    ENV: Literal["dev", "test", "prod"] = "dev"
 
     # Redis / HA
     REDIS_HOST: str = "localhost"
@@ -43,7 +47,7 @@ class Settings(BaseSettings):
 
     # Nuclear
     PRAGUE_TZ: str = "Europe/Prague"
-    NUCLEAR_PUBKEY: str = ""
+    NUCLEAR_PUBKEY: str = ""  # base64 raw 32 bytes
 
     # Risk & caps
     DAILY_HARD_DD_PCT: float = 0.04
@@ -65,10 +69,11 @@ class Settings(BaseSettings):
     DASH_PORT: int = 9090
     DASH_TOKEN: str = "change-me"
 
-    # Features (defaults safe/off)
+    # Features (safe/off by default)
     FEATURES_HA_DRILLS: bool = False
     FEATURES_AUTO_FLAT_ALL_ON_LOCK_LOSS: bool = False
     FEATURES_HA_STATUS_BADGE: bool = True
+    FEATURES_AUTO_REGISTER_MT5: bool = False
 
     @property
     def REDIS_URL_EFFECTIVE(self) -> str:
