@@ -1,4 +1,4 @@
-# path: config/default.yaml
+# path: config/default.yaml (append risk + features.risk_adapter)
 leader:
   provider: redis
 modes:
@@ -10,10 +10,14 @@ correlation:
   dxy_band_pct: 0.002
 gap:
   alert_pct: 0.15
+risk:
+  mode: ratchet
+  floor_pct: 0.25
+  ceiling_pct: 1.50
 features:
   ha_drills: false
   ha_status_badge: true
   auto_flat_all_on_lock_loss: false
   auto_register_mt5: false
   gap_guard: false
-
+  risk_adapter: false
