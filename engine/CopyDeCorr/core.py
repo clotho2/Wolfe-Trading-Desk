@@ -1,11 +1,10 @@
-# engine/CopyDeCorr/core.py
+# path: engine/CopyDeCorr/core.py (legacy decor + correlation enforcement)
 from __future__ import annotations
 
 import itertools
-import json
 import random
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Tuple
 
 import pandas as pd
 
@@ -22,18 +21,7 @@ class DecorRecord:
     symbol_mask: List[str]
 
 
-@dataclass
-class CorrDecision:
-    symbol_a: str
-    symbol_b: str
-    corr: float
-    action: str  # "block" | "halve"
-
-
 def apply_decorrelation(account_id: str, strategy_fingerprint: str, symbols: List[str]) -> DecorRecord:
-    """Legacy copy decorrelation (jitter/tilt/mask) — retained for parity.
-    This does **not** enforce correlation caps.
-    """
     jitter_ms = random.randint(*settings.COPY_JITTER_MS)
     tilt_val = random.uniform(*settings.COPY_TILT_PCT)
     mask = symbols[:]  # placeholder rotation
@@ -48,51 +36,52 @@ def apply_decorrelation(account_id: str, strategy_fingerprint: str, symbols: Lis
 
 
 # --------------------------- v0.4.3 Correlation Cap ---------------------------
+@dataclass
+class CorrDecision:
+    symbol_a: str
+    symbol_b: str
+    corr: float
+    action: str  # "block" | "halve"
 
-def _compute_window_corr(returns: pd.DataFrame, window: int = 20) -> pd.DataFrame:
-    """Compute last-`window` pairwise Pearson correlation.
 
-    Expects a DataFrame of log/percentage returns with columns as symbols and
-    rows as equally spaced time buckets.
-    """
-    if returns.shape[0] < window:
-        window = returns.shape[0]
-    if window == 0:
+def _compute_window_corr(returns: pd.DataFrame, window: int) -> pd.DataFrame:
+    if returns.shape[0] == 0:
         return pd.DataFrame()
+    window = min(window, returns.shape[0])
     return returns.tail(window).corr()
 
 
 def _usd_pair(symbol: str) -> bool:
-    return "USD" in symbol.upper()
+    s = symbol.upper()
+    return s.endswith("USD") or s.startswith("USD")
 
 
 def enforce_correlation(
     open_symbols: Sequence[str],
     returns: pd.DataFrame,
     dxy_change_pct: float | None = None,
+    *,
+    window_days: int | None = None,
+    threshold: float | None = None,
+    action_default: str | None = None,
 ) -> List[CorrDecision]:
-    """Enforce correlation caps per Council v0.4.3.
+    """Return pairwise decisions meeting the threshold.
 
-    - Block (default) or halve size when |ρ| ≥ settings.CORR_BLOCK_THRESHOLD
-      across **rolling 20D** window of returns.
-    - If provided, apply DXY support/resistance band: for USD pairs and
-      |ΔDXY| ≤ settings.DXY_BAND_BPS bps (±0.20% default), prefer *block*.
-
-    Emits immutable audit events with reason code `CORR_BLOCK`.
+    Emits `CORR_BLOCK` events for traceability.
     """
-    action_default = settings.CORR_THRESHOLD_ACTION
-    threshold = float(settings.CORR_BLOCK_THRESHOLD)
+    window = int(window_days or settings.CORR_WINDOW_DAYS)
+    threshold = float(threshold or settings.CORR_BLOCK_THRESHOLD)
+    action_default = (action_default or settings.CORR_THRESHOLD_ACTION).lower()
 
     if returns.empty or len(open_symbols) < 2:
         return []
 
-    corr = _compute_window_corr(returns, window=20)
+    corr = _compute_window_corr(returns, window)
     decisions: List[CorrDecision] = []
 
-    # Determine DXY band condition once
     in_dxy_band = False
     if dxy_change_pct is not None:
-        in_dxy_band = abs(float(dxy_change_pct)) <= (settings.DXY_BAND_BPS / 10_000.0)
+        in_dxy_band = abs(float(dxy_change_pct)) <= float(settings.DXY_BAND_PCT)
 
     for a, b in itertools.combinations(open_symbols, 2):
         if a not in corr.columns or b not in corr.columns:
@@ -100,22 +89,58 @@ def enforce_correlation(
         rho = float(abs(corr.loc[a, b]))
         if rho >= threshold:
             action = action_default
-            # If both are USD pairs and DXY is in tight band, bias to block
             if in_dxy_band and _usd_pair(a) and _usd_pair(b):
-                action = "block"
+                # In DXY band, we bias to configured action but remain consistent across the USD cluster
+                action = action_default
             decisions.append(CorrDecision(a, b, rho, action))
-            append_event(
-                {
-                    "evt": "CORR_BLOCK",
-                    "payload": {
-                        "symbol_a": a,
-                        "symbol_b": b,
-                        "rho": rho,
-                        "threshold": threshold,
-                        "action": action,
-                        "dxy_in_band": in_dxy_band,
-                    },
-                }
-            )
+            append_event({
+                "evt": "CORR_BLOCK",
+                "payload": {"symbol_a": a, "symbol_b": b, "rho": rho, "threshold": threshold, "action": action, "dxy_in_band": in_dxy_band},
+            })
 
     return decisions
+
+
+def group_compliance_enforcement(
+    open_symbols: Sequence[str],
+    returns: pd.DataFrame,
+    dxy_change_pct: float | None = None,
+) -> Tuple[List[str], Dict[str, float], List[CorrDecision]]:
+    """Map pairwise decisions to ComplianceGuard effects.
+
+    Returns (blocked_symbols, size_multipliers, raw_decisions)
+    - If any USD pair crosses threshold *and* |ΔDXY| ≤ band → apply the chosen action to the entire USD cluster.
+    - For non-USD pairs, apply action per symbol participation in any violating pair.
+    - For action="block", symbol is added to blocked set.
+    - For action="halve", symbol gets size multiplier 0.5.
+    """
+    decisions = enforce_correlation(open_symbols, returns, dxy_change_pct)
+    blocked: set[str] = set()
+    size_mul: Dict[str, float] = {}
+
+    # Check DXY regime for USD cluster application
+    in_dxy_band = False
+    if dxy_change_pct is not None:
+        in_dxy_band = abs(float(dxy_change_pct)) <= float(settings.DXY_BAND_PCT)
+
+    usd_symbols = [s for s in open_symbols if _usd_pair(s)]
+    any_usd_violation = any(_usd_pair(d.symbol_a) and _usd_pair(d.symbol_b) for d in decisions)
+
+    if in_dxy_band and any_usd_violation:
+        # Apply configured action consistently across USD cluster
+        act = settings.CORR_THRESHOLD_ACTION
+        if act == "block":
+            blocked.update(usd_symbols)
+        else:
+            for s in usd_symbols:
+                size_mul[s] = min(size_mul.get(s, 1.0), 0.5)
+
+    # Apply per-pair actions for all pairs
+    for d in decisions:
+        for s in (d.symbol_a, d.symbol_b):
+            if d.action == "block":
+                blocked.add(s)
+            else:
+                size_mul[s] = min(size_mul.get(s, 1.0), 0.5)
+
+    return sorted(blocked), size_mul, decisions
