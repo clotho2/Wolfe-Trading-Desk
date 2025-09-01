@@ -1,4 +1,4 @@
-# path: infra/ha/leader.py
+# path: infra/ha/leader.py (augment with heartbeat timestamp accessor)
 from __future__ import annotations
 
 import asyncio
@@ -9,32 +9,15 @@ from redis.asyncio import Redis
 
 
 class LeaderElector:
-    """Redis leader election with fencing and callbacks.
-
-    - Acquire via SET NX PX ttl with value "token:<int>"; tokens from INCR(lock_key+":token").
-    - Heartbeat verifies current value before pexpire.
-    - Calls `on_gain(token)` and `on_loss()` when lock changes.
-    - Idempotent `start()`; use app-lifetime task.
-    """
-
-    def __init__(
-        self,
-        redis: Redis,
-        lock_key: str,
-        ttl_ms: int,
-        heartbeat_ms: int,
-        fencing: bool = True,
-    ) -> None:
+    def __init__(self, redis: Redis, lock_key: str, ttl_ms: int, heartbeat_ms: int, fencing: bool = True) -> None:
         self.redis = redis
         self.lock_key = lock_key
         self.token_key = f"{lock_key}:token"
         self.ttl_ms = int(ttl_ms)
         self.heartbeat_ms = int(heartbeat_ms)
         self.fencing = fencing
-
         self.on_gain: Optional[Callable[[int], Awaitable[None]]] = None
         self.on_loss: Optional[Callable[[], Awaitable[None]]] = None
-
         self._leader = False
         self._token: Optional[int] = None
         self._value: Optional[bytes] = None
@@ -42,7 +25,6 @@ class LeaderElector:
         self._running = False
         self._last_hb: Optional[float] = None
 
-    # -------- Public props --------
     @property
     def is_leader(self) -> bool:
         return self._leader
@@ -51,7 +33,10 @@ class LeaderElector:
     def token(self) -> Optional[int]:
         return self._token
 
-    # -------- Lifecycle --------
+    @property
+    def last_hb_ts(self) -> Optional[float]:
+        return self._last_hb
+
     async def start(self) -> None:
         if self._running:
             return
@@ -66,11 +51,9 @@ class LeaderElector:
                 else:
                     await self._heartbeat()
             except Exception:
-                # swallow to keep loop alive; observability is via audit bus in bootstrap
                 pass
             await asyncio.sleep(self.heartbeat_ms / 1000.0)
 
-    # -------- Internals --------
     async def _try_acquire(self) -> None:
         token = int(await self.redis.incr(self.token_key)) if self.fencing else 1
         value = f"token:{token}".encode()
