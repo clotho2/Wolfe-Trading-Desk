@@ -1,0 +1,6 @@
+# path: config/profile.ftmo.yaml
+profile: ftmo
+ftmo:
+  phase1_pacing_bonus_pct: 7
+  phase2_max_per_trade_risk_pct: 0.5
+  friday_cutoff_gmt: "14:00"
