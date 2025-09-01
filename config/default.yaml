@@ -1,0 +1,19 @@
+# path: config/default.yaml
+leader:
+  provider: redis
+modes:
+  executor_mode: SHADOW  # LIVE | DRY_RUN | SHADOW
+correlation:
+  window_days: 20
+  block_threshold: 0.70
+  block_threshold_action: block  # or halve
+  dxy_band_pct: 0.002
+gap:
+  alert_pct: 0.15
+features:
+  ha_drills: false
+  ha_status_badge: true
+  auto_flat_all_on_lock_loss: false
+  auto_register_mt5: false
+  gap_guard: false
+
