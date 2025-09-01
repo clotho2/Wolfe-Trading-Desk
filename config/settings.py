@@ -1,4 +1,4 @@
-# path: config/settings.py (add FEATURES_RISK_ADAPTER)
+# path: config/settings.py (add FTMO fields)
 from __future__ import annotations
 from enum import Enum
 from typing import Tuple, Literal, Callable, Any
@@ -60,19 +60,21 @@ class Settings(BaseSettings):
 
     RISK_RATCHET_HALF_AFTER_RED_DAYS: int = 2
 
-    # Adaptive Risk
     RISK_MODE: Literal["ratchet", "adaptive", "both"] = "ratchet"
     RISK_FLOOR_PCT: float = 0.25
     RISK_CEILING_PCT: float = 1.50
 
-    # Correlation controls
     CORR_WINDOW_DAYS: int = 20
     CORR_BLOCK_THRESHOLD: float = 0.70
     CORR_THRESHOLD_ACTION: Literal["block", "halve"] = "block"
     DXY_BAND_PCT: float = 0.002
 
-    # Gap/Corp-action
     GAP_ALERT_PCT: float = 0.15
+
+    # FTMO profile mirrors
+    FTMO_PHASE1_PACING_BONUS_PCT: float = 7.0
+    FTMO_PHASE2_MAX_PER_TRADE_RISK_PCT: float = 0.5
+    FTMO_FRIDAY_CUTOFF_GMT: str = "14:00"
 
     # Dashboard
     DASH_PORT: int = 9090
@@ -104,4 +106,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
