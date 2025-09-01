@@ -1,10 +1,12 @@
-# path: config/settings.py (Correlation keys extended)
+# path: config/settings.py (add risk fields)
 from __future__ import annotations
 from enum import Enum
-from typing import Tuple, Literal
+from typing import Tuple, Literal, Callable, Any
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from .loader import yaml_settings_source
 
 
 class ExecutorMode(str, Enum):
@@ -16,7 +18,6 @@ class ExecutorMode(str, Enum):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
-    # Identity / Mode
     NODE_ID: str = "EX-44-PRIMARY"
     EXECUTOR_MODE: ExecutorMode = ExecutorMode.DRY_RUN
 
@@ -27,7 +28,6 @@ class Settings(BaseSettings):
             return ExecutorMode.SHADOW
         return v
 
-    # Environment gate for dev helpers
     ENV: Literal["dev", "test", "prod"] = "dev"
 
     # Redis / HA
@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # Nuclear
     PRAGUE_TZ: str = "Europe/Prague"
-    NUCLEAR_PUBKEY: str = ""  # base64 raw 32 bytes
+    NUCLEAR_PUBKEY: str = ""
 
     # Risk & caps
     DAILY_HARD_DD_PCT: float = 0.04
@@ -60,21 +60,30 @@ class Settings(BaseSettings):
 
     RISK_RATCHET_HALF_AFTER_RED_DAYS: int = 2
 
-    # Correlation controls (v0.4.3)
+    # New Adaptive Risk fields (YAML mirrors under risk.*)
+    RISK_MODE: Literal["ratchet", "adaptive", "both"] = "ratchet"
+    RISK_FLOOR_PCT: float = 0.25
+    RISK_CEILING_PCT: float = 1.50
+
+    # Correlation controls
     CORR_WINDOW_DAYS: int = 20
     CORR_BLOCK_THRESHOLD: float = 0.70
     CORR_THRESHOLD_ACTION: Literal["block", "halve"] = "block"
-    DXY_BAND_PCT: float = 0.002  # ±0.20%; applies to USD pairs cluster regime
+    DXY_BAND_PCT: float = 0.002
+
+    # Gap/Corp-action guard
+    GAP_ALERT_PCT: float = 0.15
 
     # Dashboard
     DASH_PORT: int = 9090
     DASH_TOKEN: str = "change-me"
 
-    # Features (safe/off by default)
+    # Features
     FEATURES_HA_DRILLS: bool = False
     FEATURES_AUTO_FLAT_ALL_ON_LOCK_LOSS: bool = False
     FEATURES_HA_STATUS_BADGE: bool = True
     FEATURES_AUTO_REGISTER_MT5: bool = False
+    FEATURES_GAP_GUARD: bool = False
 
     @property
     def REDIS_URL_EFFECTIVE(self) -> str:
@@ -82,5 +91,40 @@ class Settings(BaseSettings):
             return self.REDIS_URL
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        init_settings: Callable[..., Any],
+        env_settings: Callable[..., Any],
+        dotenv_settings: Callable[..., Any],
+        file_secret_settings: Callable[..., Any],
+    ):
+        return (lambda: yaml_settings_source(), dotenv_settings, env_settings, init_settings, file_secret_settings)
+
 
 settings = Settings()
+
+
+# path: data/sample_returns.csv
+# pct_change
+0.004
+-0.001
+0.006
+0.003
+-0.002
+0.005
+0.004
+-0.003
+0.002
+-0.001
+0.003
+0.002
+0.001
+-0.002
+0.004
+0.003
+0.002
+-0.001
+0.001
+0.002
+
