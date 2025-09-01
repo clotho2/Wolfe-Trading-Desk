@@ -1,19 +1,24 @@
-# ops/dashboard/app.py
+# path: ops/dashboard/app.py (startup wiring + /ha/status + mode header)
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
-from config.settings import ExecutorMode, settings
+from config.settings import ExecutorMode, Settings, settings
 from engine.timebox import now_prague, prague_reset_countdown
 from ops.audit.immutable_audit import append_event
+from ops.ha.bootstrap import start_ha, status as ha_status
 
 app = FastAPI(title="WolfeDesk v0.4.3 Dashboard")
 
 
-# ------------------------------ Auth / Headers ------------------------------
+@app.on_event("startup")
+async def _startup():
+    await start_ha(app, Settings())
+
 
 def require_token(authorization: Optional[str] = Header(None)):
     token = (authorization or "").removeprefix("Bearer ").strip()
@@ -25,15 +30,11 @@ def require_token(authorization: Optional[str] = Header(None)):
 @app.middleware("http")
 async def mode_header(request, call_next):  # type: ignore[no-untyped-def]
     response = await call_next(request)
-    # Watermark all responses with current executor mode
     response.headers["X-Wolfe-Mode"] = settings.EXECUTOR_MODE.value
     return response
 
 
-# --------------------------------- Routes ----------------------------------
-
-
-class KillConfirm(BaseModel := __import__("pydantic").BaseModel):  # local type hint
+class KillConfirm(BaseModel):
     confirm: bool
 
 
@@ -52,24 +53,18 @@ def snapshot():
     }
 
 
+@app.get("/ha/status", dependencies=[Depends(require_token)])
+def ha_status_route():
+    return ha_status()
+
+
 @app.post("/kill", dependencies=[Depends(require_token)])
 def kill(payload: KillConfirm):
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Confirmation required")
-
-    # In DRY_RUN/SHADOW, log-only (no side effects). LIVE wiring will close_all().
     evt = {
         "evt": "KILL_ALL",
-        "payload": {
-            "mode": settings.EXECUTOR_MODE.value,
-            "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE,
-        },
+        "payload": {"mode": settings.EXECUTOR_MODE.value, "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE},
     }
     append_event(evt)
-    return JSONResponse(
-        {
-            "status": "ok",
-            "message": "Kill issued",
-            "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE,
-        }
-    )
+    return JSONResponse({"status": "ok", "message": "Kill issued", "simulated": settings.EXECUTOR_MODE != ExecutorMode.LIVE})
