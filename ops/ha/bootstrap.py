@@ -1,7 +1,8 @@
-# path: ops/ha/bootstrap.py
+# path: ops/ha/bootstrap.py (enhance status payload)
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Optional
 
 from redis.asyncio import Redis
@@ -14,7 +15,6 @@ _elector: Optional[LeaderElector] = None
 
 
 async def start_ha(app, settings: Settings) -> None:
-    """Idempotent HA bootstrap; called from app startup."""
     global _elector
     if _elector:
         return
@@ -32,7 +32,6 @@ async def start_ha(app, settings: Settings) -> None:
         await publish({"evt": "HA_LOCK_GAINED", "payload": {"token": token}})
 
     async def on_lock_loss():
-        # Executor will handle FLAT_ALL + LOCKDOWN=SPLIT_BRAIN
         await publish({"evt": "HA_LOCK_LOST", "payload": {}})
 
     _elector.on_gain = on_lock_gain
@@ -43,13 +42,17 @@ async def start_ha(app, settings: Settings) -> None:
 
 
 def status() -> dict:
-    """Lightweight status for dashboard polling."""
     if not _elector:
         return {"running": False}
+    token = _elector.token
+    token_tail = (str(token)[-6:] if token is not None else None)
+    last_hb = _elector.last_hb_ts
+    last_hb_ms_ago = int((time.time() - last_hb) * 1000) if last_hb else None
     return {
         "running": True,
         "leader": _elector.is_leader,
-        "token": _elector.token,
+        "token_tail": token_tail,
         "ttl_ms": _elector.ttl_ms,
         "hb_ms": _elector.heartbeat_ms,
+        "last_hb_ms_ago": last_hb_ms_ago,
     }
