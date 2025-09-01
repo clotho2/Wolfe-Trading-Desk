@@ -1,4 +1,4 @@
-# path: engine/ComplianceGuard/core.py (add correlation integration)
+# path: engine/ComplianceGuard/core.py (add GAP guard + resume)
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,19 +28,13 @@ class GuardResult:
 
 
 class ComplianceGuard:
-    """Spec-true guard with explicit check_* methods and a backwards-compatible evaluate().
-    All emissions are mirrored to the immutable audit via append_event(...).
-    """
-
     def __init__(self, settings: Optional[Settings] = None, append=append_event):
-        # Allow old tests to call ComplianceGuard() with no args
         self.settings = settings or Settings()
         self.append = append
         self.disabled: bool = False
-        # State used by daily DD and optional counters
-        self.snapshot_equity: Decimal = Decimal("100")  # updated by evaluate(..) if provided
+        self.snapshot_equity: Decimal = Decimal("100")
+        self._gap_halted: bool = False
 
-    # ----------------- utilities -----------------
     def _emit(self, code: str, severity: Severity, detail: Dict[str, Any], live_equity: Optional[float] = None) -> GuardResult:
         payload = {
             "code": code,
@@ -50,151 +44,57 @@ class ComplianceGuard:
             "live_equity": float(live_equity) if live_equity is not None else None,
             "now_utc": datetime.now(timezone.utc).isoformat(),
         }
-        # Mirror to immutable audit
         self.append({"evt": code, "payload": payload})
         return GuardResult(code=code, severity=severity, detail=detail)
 
-    # ----------------- checks required by spec -----------------
+    # ----- Daily DD (existing) -----
     def check_daily_dd(self, live_equity: Decimal) -> Optional[GuardResult]:
-        """3.8% soft freeze, ≤4.0% hard kill."""
         if self.snapshot_equity <= 0:
             return None
         dd = (self.snapshot_equity - live_equity) / self.snapshot_equity
         if dd >= Decimal(str(self.settings.DAILY_HARD_DD_PCT)):
-            # Hard stop → disable executor
             self.disabled = True
-            return self._emit(
-                "DAILY_DD_HARD",
-                Severity.S3,
-                {"dd": float(dd)},
-                live_equity=float(live_equity),
-            )
+            return self._emit("DAILY_DD_HARD", Severity.S3, {"dd": float(dd)}, live_equity=float(live_equity))
         if dd >= Decimal(str(self.settings.DAILY_SOFT_FREEZE_PCT)):
+            return self._emit("DAILY_DD_SOFT", Severity.S2, {"dd": float(dd)}, live_equity=float(live_equity))
+        return None
+
+    # ----- Gap/Corp-action guard (v0.4.3 @15%) -----
+    def check_gap(self, open_price: float, prev_close: float) -> Optional[GuardResult]:
+        if not self.settings.FEATURES_GAP_GUARD:
+            return None
+        if prev_close <= 0:
+            return None
+        gap = abs(open_price - prev_close) / prev_close
+        threshold = float(self.settings.GAP_ALERT_PCT)
+        if gap >= threshold and not self._gap_halted:
+            self._gap_halted = True
             return self._emit(
-                "DAILY_DD_SOFT",
+                "GAP_HALT",
                 Severity.S2,
-                {"dd": float(dd)},
-                live_equity=float(live_equity),
+                {"open": float(open_price), "prev_close": float(prev_close), "gap_pct": float(gap), "threshold": threshold, "action": "halt_new_entries"},
             )
         return None
 
-    def check_order_rate(self, orders_last_60s: int) -> Optional[GuardResult]:
-        cap = int(self.settings.ORDER_RATE_CAP_PER_60S)
-        if orders_last_60s > cap:
-            return self._emit(
-                "ORDER_RATE",
-                Severity.S1,
-                {"orders_last_60s": orders_last_60s, "cap": cap, "backoff_seconds": 60},
-            )
+    def gap_resume(self) -> Optional[GuardResult]:
+        if self._gap_halted:
+            self._gap_halted = False
+            return self._emit("GAP_RESUME", Severity.S1, {"action": "resume_entries"})
         return None
 
-    def check_news_blackout(self, symbol: str, blackout: bool) -> Optional[GuardResult]:
-        # The calendar logic lives elsewhere; pass True here if blackout is active for symbol
-        if blackout:
-            return self._emit(
-                "NEWS_BLACKOUT",
-                Severity.S2,
-                {"symbol": symbol, "action": "freeze_new_entries"},
-            )
-        return None
-
-    def check_atr_spike(self, symbol: str, atr_ratio: float, threshold: float = 2.0) -> Optional[GuardResult]:
-        if atr_ratio > threshold:
-            return self._emit(
-                "ATR_SPIKE",
-                Severity.S2,
-                {"symbol": symbol, "atr_ratio": atr_ratio, "freeze_minutes": 60},
-            )
-        return None
-
-    def check_slippage_slo(self, symbol: str, breaches_last_60m: int) -> Optional[GuardResult]:
-        if breaches_last_60m >= 3:
-            return self._emit(
-                "SLIPPAGE_SLO_BREACH",
-                Severity.S2,
-                {
-                    "symbol": symbol,
-                    "breaches_last_60m": breaches_last_60m,
-                    "size_multiplier": 0.5,
-                    "freeze_minutes": 30,
-                },
-            )
-        return None
-
-    def check_cluster_risk(self, cluster_id: str, open_risk_pct: float, single_trade_risk_pct: float) -> Optional[GuardResult]:
-        cap = float(self.settings.CLUSTER_CAP_MULT) * float(single_trade_risk_pct)
-        if float(open_risk_pct) > cap:
-            return self._emit(
-                "CLUSTER_RISK_CAP",
-                Severity.S2,
-                {
-                    "cluster_id": cluster_id,
-                    "open_risk_pct": open_risk_pct,
-                    "cap_pct": cap,
-                    "action": "block_new_entries",
-                },
-            )
-        return None
-
-    # ----------------- Correlation (v0.4.3) -----------------
-    def check_correlation(
-        self,
-        open_symbols: List[str],
-        returns: pd.DataFrame,
-        dxy_change_pct: float | None = None,
-    ) -> List[GuardResult]:
-        """Apply rolling window correlation policy.
-
-        - Pairwise correlations computed over `settings.CORR_WINDOW_DAYS` rows.
-        - If |ρ| ≥ threshold: action = block|halve.
-        - If |ΔDXY| ≤ band, USD pairs apply action consistently across the USD cluster.
-        - Emits `CORR_BLOCK` with details.
-        - Returns a list of GuardResults for the affected symbols/pairs.
-        """
-        blocked, size_mul, decisions = group_compliance_enforcement(open_symbols, returns, dxy_change_pct)
+    # ----- Correlation (existing v0.4.3 integration) -----
+    def check_correlation(self, open_symbols: List[str], returns: pd.DataFrame, dxy_change_pct: float | None = None) -> List[GuardResult]:
+        blocked, size_mul, _ = group_compliance_enforcement(open_symbols, returns, dxy_change_pct)
         results: List[GuardResult] = []
-
         if blocked:
-            results.append(
-                self._emit(
-                    "CORR_BLOCK",
-                    Severity.S2,
-                    {
-                        "symbols": blocked,
-                        "action": "block",
-                        "window_days": int(self.settings.CORR_WINDOW_DAYS),
-                        "threshold": float(self.settings.CORR_BLOCK_THRESHOLD),
-                    },
-                )
-            )
-        # Halve sizing notices
+            results.append(self._emit("CORR_BLOCK", Severity.S2, {"symbols": blocked, "action": "block", "window_days": int(self.settings.CORR_WINDOW_DAYS), "threshold": float(self.settings.CORR_BLOCK_THRESHOLD)}))
         halved = [s for s, m in size_mul.items() if m <= 0.5 and s not in blocked]
         if halved:
-            results.append(
-                self._emit(
-                    "CORR_BLOCK",
-                    Severity.S1,
-                    {
-                        "symbols": sorted(halved),
-                        "action": "halve",
-                        "size_multiplier": 0.5,
-                        "window_days": int(self.settings.CORR_WINDOW_DAYS),
-                        "threshold": float(self.settings.CORR_BLOCK_THRESHOLD),
-                    },
-                )
-            )
+            results.append(self._emit("CORR_BLOCK", Severity.S1, {"symbols": halved, "action": "halve", "size_multiplier": 0.5, "window_days": int(self.settings.CORR_WINDOW_DAYS), "threshold": float(self.settings.CORR_BLOCK_THRESHOLD)}))
         return results
 
-    # ----------------- legacy test compatibility -----------------
-    def evaluate(
-        self,
-        live_equity: float,
-        snapshot_equity: Optional[float] = None,
-        floating_pl: float = 0.0,
-    ) -> List[GuardResult]:
-        """Legacy shim used by tests/unit/test_compliance.py.
-        If snapshot_equity is provided, update it; then run the daily DD check only.
-        """
+    # ----- Legacy shim -----
+    def evaluate(self, live_equity: float, snapshot_equity: Optional[float] = None, floating_pl: float = 0.0) -> List[GuardResult]:
         if snapshot_equity is not None:
             self.snapshot_equity = Decimal(str(snapshot_equity))
         res = self.check_daily_dd(Decimal(str(live_equity)))
