@@ -18,6 +18,16 @@
 - **Commit 13:** Reason code schema guard + tests.
 - **Commit 14:** Pytest config + GitHub Actions CI with coverage gate (≥85% for changed files).
 - **Commit 15:** This checklist.
+- ## Fix Pass — Commits 16–24
+- **16**: Redis HA leader with fencing, ack gating, split-brain auto-flat (flag, 5s cooldown) + tests (fakeredis)
+- **17**: SHADOW semantics across adapters; watermark middleware; tests
+- **18**: Nuclear engage endpoint + Ed25519 re-enable flow; tests
+- **19**: GitHub Actions CI workflow (ruff, black, pytest, coverage gate)
+- **20**: PR body draft + spec diff tool
+- **21**: on_loss cooldown duplication guard + test
+- **22**: Config precedence (YAML < .env < ENV) + .env.example + tests
+- **23**: Health endpoint + dashboard badge polish
+- **24**: EX-44 deployment notes
 
 ## Files added/changed (highlights)
 - `config/loader.py`, `config/settings.py`, `config/default.yaml`, `config/profile.ftmo.yaml`
