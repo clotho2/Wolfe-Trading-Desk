@@ -1,83 +1,144 @@
-# path: infra/ha/leader.py (augment with heartbeat timestamp accessor)
+# path: infra/ha/leader.py
 from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
 from redis.asyncio import Redis
 
+from config.settings import settings
+from infra.ha.ack import has_ack
+from ops.audit.immutable_audit import append_event
+from shared.services.registry import get_adapter
+from shared.state.runtime import LockdownState, get_lockdown, set_lockdown
+
+
+OnGain = Callable[[int], Awaitable[None]]
+OnLoss = Callable[[], Awaitable[None]]
+
+
+@dataclass
+class LeaderConfig:
+    lock_key: str
+    ttl_ms: int
+    heartbeat_ms: int
+
 
 class LeaderElector:
-    def __init__(self, redis: Redis, lock_key: str, ttl_ms: int, heartbeat_ms: int, fencing: bool = True) -> None:
+    """Redis-based leader election with fencing tokens and split-brain handling."""
+
+    def __init__(self, redis: Redis, lock_key: str, ttl_ms: int, heartbeat_ms: int, *, fencing: bool = True) -> None:
         self.redis = redis
-        self.lock_key = lock_key
-        self.token_key = f"{lock_key}:token"
         self.ttl_ms = int(ttl_ms)
         self.heartbeat_ms = int(heartbeat_ms)
+        self.lock_key = lock_key
         self.fencing = fencing
-        self.on_gain: Optional[Callable[[int], Awaitable[None]]] = None
-        self.on_loss: Optional[Callable[[], Awaitable[None]]] = None
-        self._leader = False
-        self._token: Optional[int] = None
-        self._value: Optional[bytes] = None
+
+        self.is_leader: bool = False
+        self.token: Optional[int] = None
+        self.last_hb_ts: Optional[float] = None
         self._task: Optional[asyncio.Task] = None
-        self._running = False
-        self._last_hb: Optional[float] = None
 
-    @property
-    def is_leader(self) -> bool:
-        return self._leader
+        # External hooks
+        self.on_gain: Optional[OnGain] = None
+        self.on_loss: Optional[OnLoss] = None
 
-    @property
-    def token(self) -> Optional[int]:
-        return self._token
-
-    @property
-    def last_hb_ts(self) -> Optional[float]:
-        return self._last_hb
+        # Internal cooldown to avoid flapping mass-close
+        self._last_flat_ms: Optional[float] = None
+        self._cooldown_ms = 5000
+        self._stopped = False
+        self._blocked_for_ack = False
 
     async def start(self) -> None:
-        if self._running:
+        if self._task:
             return
-        self._running = True
-        self._task = asyncio.create_task(self._loop(), name="ha-elector")
+        self._stopped = False
+        self._task = asyncio.create_task(self._run())
 
-    async def _loop(self) -> None:
-        while self._running:
-            try:
-                if not self._leader:
-                    await self._try_acquire()
+    async def stop(self) -> None:
+        self._stopped = True
+        if self._task:
+            self._task.cancel()
+            with contextlib.suppress(Exception):
+                await self._task
+            self._task = None
+
+    async def _run(self) -> None:
+        try:
+            while not self._stopped:
+                if not self.is_leader:
+                    # If previously lost, require human ack before re-acquire
+                    if self._blocked_for_ack and not await has_ack(self.redis):
+                        await asyncio.sleep(self.heartbeat_ms / 1000)
+                        continue
+                    await self._attempt_acquire()
                 else:
-                    await self._heartbeat()
-            except Exception:
-                pass
-            await asyncio.sleep(self.heartbeat_ms / 1000.0)
-
-    async def _try_acquire(self) -> None:
-        token = int(await self.redis.incr(self.token_key)) if self.fencing else 1
-        value = f"token:{token}".encode()
-        ok = await self.redis.set(self.lock_key, value, nx=True, px=self.ttl_ms)
-        if ok:
-            self._leader = True
-            self._token = token
-            self._value = value
-            self._last_hb = time.time()
-            if self.on_gain:
-                await self.on_gain(token)
-
-    async def _heartbeat(self) -> None:
-        current = await self.redis.get(self.lock_key)
-        if current != self._value:
-            await self._lost()
+                    ok = await self._heartbeat()
+                    if not ok:
+                        await self._handle_loss()
+                await asyncio.sleep(self.heartbeat_ms / 1000)
+        except asyncio.CancelledError:
             return
-        await self.redis.pexpire(self.lock_key, self.ttl_ms)
-        self._last_hb = time.time()
 
-    async def _lost(self) -> None:
-        self._leader = False
-        token = self._token
-        self._token = None
-        self._value = None
+    async def _attempt_acquire(self) -> None:
+        # Fencing token via INCR
+        token = int(await self.redis.incr("ha:fencing_seq")) if self.fencing else int(time.time() * 1000)
+        # SET key NX PX ttl with token value
+        set_ok = await self.redis.set(self.lock_key, str(token), nx=True, px=self.ttl_ms)
+        if not set_ok:
+            return
+        self.is_leader = True
+        self.token = token
+        self.last_hb_ts = time.time()
+        if self.on_gain:
+            await self.on_gain(token)
+        append_event({"evt": "HA_LOCK_GAINED", "payload": {"token": token}})
+
+    async def _heartbeat(self) -> bool:
+        # Only leader heartbeats; if key vanished, we lost
+        pexp = await self.redis.pexpire(self.lock_key, self.ttl_ms)
+        if not pexp:
+            return False
+        self.last_hb_ts = time.time()
+        return True
+
+    async def _handle_loss(self) -> None:
+        prev = self.token
+        self.is_leader = False
+        self.token = None
+        append_event({"evt": "HA_LOCK_LOST", "payload": {"token": prev}})
         if self.on_loss:
             await self.on_loss()
+        # Split-brain protection + executor hook
+        await self._maybe_auto_flat_all()
+        # Block re-acquire until human ack
+        self._blocked_for_ack = True
+
+    async def _maybe_auto_flat_all(self) -> None:
+        if not settings.FEATURES_AUTO_FLAT_ALL_ON_LOCK_LOSS:
+            return
+        # Idempotent if already in lockdown
+        if get_lockdown() == LockdownState.SPLIT_BRAIN:
+            return
+        # Cooldown guard
+        now_ms = time.time() * 1000
+        if self._last_flat_ms and (now_ms - self._last_flat_ms) < self._cooldown_ms:
+            return
+        self._last_flat_ms = now_ms
+
+        set_lockdown(LockdownState.SPLIT_BRAIN)
+        adapter = get_adapter("mt5") or get_adapter(None)
+        results = []
+        if adapter is not None:
+            results = await adapter.flat_all("split_brain")
+        append_event({"evt": "FLAT_ALL_EXECUTED", "payload": {"mode": getattr(settings.EXECUTOR_MODE, 'value', str(settings.EXECUTOR_MODE)), "count": len(results)}})
+
+    # Test helpers
+    async def force_loss_for_test(self) -> None:
+        await self._handle_loss()
+
+    async def attempt_reacquire_for_test(self) -> None:
+        self._blocked_for_ack = False
+        await self._attempt_acquire()
