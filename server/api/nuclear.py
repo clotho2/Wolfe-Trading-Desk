@@ -1,6 +1,7 @@
-# path: server/api/nuclear.py
+# path: server/api/nuclear.py (extend with /engage and updated re-enable)
 from __future__ import annotations
 
+import base64
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 
 from config.settings import settings
 from ops.audit.immutable_audit import append_event
-from security.nuclear import prague_day_nonce, verify_signature
+from security.nuclear import day_nonce, verify
 from shared.state.nuclear import clear as clear_nuclear, is_active, last_nonce_used, set_last_nonce
 from shared.state.runtime import LockdownState, set_lockdown
 
@@ -22,23 +23,27 @@ def require_token(authorization: Optional[str] = Header(None)):
     return True
 
 
-class ResumePayload(BaseModel):
+class SignaturePayload(BaseModel):
     signature_b64: str
 
 
-@router.post("/re-enable", dependencies=[Depends(require_token)])
-def re_enable(payload: ResumePayload):
+@router.post("/engage", dependencies=[Depends(require_token)])
+async def engage_route():
+    from security.nuclear import engage as do_engage
+
+    await do_engage()
+    return {"status": "ok"}
+
+
+@router.post("/reenable", dependencies=[Depends(require_token)])
+def reenable_route(payload: SignaturePayload):
     if not is_active():
         raise HTTPException(status_code=400, detail="Nuclear not active")
-
-    nonce = prague_day_nonce()
+    nonce = day_nonce()
     if last_nonce_used() == nonce:
-        raise HTTPException(status_code=409, detail="Nonce already used (replay)")
-
-    ok = verify_signature(payload.signature_b64, nonce.encode())
-    if not ok:
+        raise HTTPException(status_code=409, detail="Nonce already used")
+    if not verify(payload.signature_b64, nonce.encode()):
         raise HTTPException(status_code=403, detail="Invalid signature")
-
     clear_nuclear()
     set_last_nonce(nonce)
     set_lockdown(LockdownState.NONE)
