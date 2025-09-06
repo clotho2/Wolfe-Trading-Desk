@@ -7,7 +7,8 @@ Usage:
 Outputs Markdown; exit 0 always.
 """
 from __future__ import annotations
-import argparse, sys
+import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List

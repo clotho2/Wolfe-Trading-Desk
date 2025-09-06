@@ -1,4 +1,7 @@
-import os, json, hashlib, base64
+import os
+import json
+import hashlib
+import base64
 from datetime import datetime, timezone
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from typing import Optional
@@ -19,11 +22,13 @@ def _load_last_hash(path: str) -> Optional[str]:
     # Simpler: keep a small sidecar file storing last hash.
     hpath = path + ".tail"
     if os.path.exists(hpath):
-        return open(hpath, "r").read().strip() or None
+        with open(hpath, "r") as f:
+            return f.read().strip() or None
     return None
 
 def _store_last_hash(path: str, h: str):
-    open(path + ".tail", "w").write(h)
+    with open(path + ".tail", "w") as f:
+        f.write(h)
 
 def _derive_key() -> bytes:
     # For demo: derive from env or default fixed dev key — replace with KMS/HSM in production
@@ -85,5 +90,6 @@ def validate_day(day_iso: str) -> bool:
             prev = rec.get("hash_curr")
     # optional: compare with sidecar tail
     if ok and os.path.exists(hpath):
-        ok = open(hpath).read().strip() == (prev or "")
+        with open(hpath) as f:
+            ok = f.read().strip() == (prev or "")
     return ok
