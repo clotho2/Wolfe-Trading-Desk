@@ -1,23 +1,31 @@
-.PHONY: venv fmt lint test run-dry run-paper digest
+# path: Makefile
+.PHONY: fmt lint test cov ci spec-diff
 
-venv:
-	python3 -m venv .venv
-	. .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt
+PY ?= python
 
 fmt:
-	@echo "Using ruff-format via ruff not included; relying on black equivalent not pinned here."
+	ruff --fix .
+	black .
 
 lint:
-	@echo "Lint step placeholder (ruff/flake8 can be added later)."
+	ruff .
+	black --check .
 
 test:
-	. .venv/bin/activate && pytest -q
+	pytest -q
 
-run-dry:
-	. .venv/bin/activate && EXECUTOR_MODE=DRY_RUN DASH_TOKEN=$${DASH_TOKEN:-change-me} .venv/bin/uvicorn ops.dashboard.app:app --host 0.0.0.0 --port 9090
+cov:
+	pytest --cov --cov-report=term-missing
 
-run-paper:
-	. .venv/bin/activate && EXECUTOR_MODE=PAPER DASH_TOKEN=$${DASH_TOKEN:-change-me} .venv/bin/uvicorn ops.dashboard.app:app --host 0.0.0.0 --port 9090
+ci:
+	ruff .
+	black --check .
+	pytest --cov --cov-report=xml --cov-report=term-missing
+	$(PY) .ci/coverage_gate.py
 
-digest:
-	. .venv/bin/activate && python scripts/digest.py
+# Allow override of spec paths:
+SPEC_FROM ?= specs/v0_4_2.md
+SPEC_TO   ?= specs/v0_4_3_delta.md
+spec-diff:
+	$(PY) tools/spec_diff.py --from $(SPEC_FROM) --to $(SPEC_TO)
+
