@@ -1,4 +1,4 @@
-# path: engine/ComplianceGuard/core.py (add GAP guard + resume)
+# path: engine/ComplianceGuard/core.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,6 +12,7 @@ import pandas as pd
 from config.settings import Settings
 from engine.CopyDeCorr.core import group_compliance_enforcement
 from ops.audit.immutable_audit import append_event
+from shared.events.bus import bus
 
 
 class Severity(str, Enum):
@@ -45,9 +46,10 @@ class ComplianceGuard:
             "now_utc": datetime.now(timezone.utc).isoformat(),
         }
         self.append({"evt": code, "payload": payload})
+        # event bus is observability only
+        bus.emit(code, **payload)
         return GuardResult(code=code, severity=severity, detail=detail)
 
-    # ----- Daily DD (existing) -----
     def check_daily_dd(self, live_equity: Decimal) -> Optional[GuardResult]:
         if self.snapshot_equity <= 0:
             return None
@@ -59,7 +61,6 @@ class ComplianceGuard:
             return self._emit("DAILY_DD_SOFT", Severity.S2, {"dd": float(dd)}, live_equity=float(live_equity))
         return None
 
-    # ----- Gap/Corp-action guard (v0.4.3 @15%) -----
     def check_gap(self, open_price: float, prev_close: float) -> Optional[GuardResult]:
         if not self.settings.FEATURES_GAP_GUARD:
             return None
@@ -69,11 +70,13 @@ class ComplianceGuard:
         threshold = float(self.settings.GAP_ALERT_PCT)
         if gap >= threshold and not self._gap_halted:
             self._gap_halted = True
-            return self._emit(
+            res = self._emit(
                 "GAP_HALT",
                 Severity.S2,
                 {"open": float(open_price), "prev_close": float(prev_close), "gap_pct": float(gap), "threshold": threshold, "action": "halt_new_entries"},
             )
+            bus.emit("GAP_HALT", pct=float(gap), threshold=threshold)
+            return res
         return None
 
     def gap_resume(self) -> Optional[GuardResult]:
@@ -82,21 +85,20 @@ class ComplianceGuard:
             return self._emit("GAP_RESUME", Severity.S1, {"action": "resume_entries"})
         return None
 
-    # ----- Correlation (existing v0.4.3 integration) -----
     def check_correlation(self, open_symbols: List[str], returns: pd.DataFrame, dxy_change_pct: float | None = None) -> List[GuardResult]:
         blocked, size_mul, _ = group_compliance_enforcement(open_symbols, returns, dxy_change_pct)
         results: List[GuardResult] = []
         if blocked:
             results.append(self._emit("CORR_BLOCK", Severity.S2, {"symbols": blocked, "action": "block", "window_days": int(self.settings.CORR_WINDOW_DAYS), "threshold": float(self.settings.CORR_BLOCK_THRESHOLD)}))
+            bus.emit("CORR_BLOCK", symbols=blocked, action="block", threshold=float(self.settings.CORR_BLOCK_THRESHOLD), window_days=int(self.settings.CORR_WINDOW_DAYS))
         halved = [s for s, m in size_mul.items() if m <= 0.5 and s not in blocked]
         if halved:
             results.append(self._emit("CORR_BLOCK", Severity.S1, {"symbols": halved, "action": "halve", "size_multiplier": 0.5, "window_days": int(self.settings.CORR_WINDOW_DAYS), "threshold": float(self.settings.CORR_BLOCK_THRESHOLD)}))
+            bus.emit("CORR_BLOCK", symbols=halved, action="halve", threshold=float(self.settings.CORR_BLOCK_THRESHOLD), window_days=int(self.settings.CORR_WINDOW_DAYS))
         return results
 
-    # ----- Legacy shim -----
     def evaluate(self, live_equity: float, snapshot_equity: Optional[float] = None, floating_pl: float = 0.0) -> List[GuardResult]:
         if snapshot_equity is not None:
             self.snapshot_equity = Decimal(str(snapshot_equity))
         res = self.check_daily_dd(Decimal(str(live_equity)))
         return [res] if res else []
-
