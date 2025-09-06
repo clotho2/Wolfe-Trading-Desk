@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 from config.settings import settings
 from ops.audit.immutable_audit import append_event
+from shared.events.bus import bus
 
 
 @dataclass
@@ -40,12 +41,6 @@ def evaluate_partial_fill(
     *,
     spread_cap_bps: Optional[float] = None,
 ) -> PartialFillDecision:
-    """Policy per spec:
-    - Always emit PARTIAL_FILL with {requested, filled, elapsed_ms, action}.
-    - If fill_ratio < 60% and spread > cap → CANCEL_REMAINDER or RETRY smaller.
-      We choose CANCEL_REMAINDER if spread > 1.5*cap, else RETRY smaller.
-    - Otherwise CONTINUE.
-    """
     cap = float(spread_cap_bps if spread_cap_bps is not None else getattr(settings, "SPREAD_CAP_BPS", SPREAD_CAP_BPS_DEFAULT))
     filled = max(0.0, float(upd.filled_qty))
     requested = max(1e-9, float(req.qty))
@@ -69,4 +64,5 @@ def evaluate_partial_fill(
         "spread_bps": round(float(upd.spread_bps), 3),
     }
     append_event({"evt": "PARTIAL_FILL", "payload": payload})
+    bus.emit("PARTIAL_FILL", **payload)
     return PartialFillDecision(action=action, reason=reason)
