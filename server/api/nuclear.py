@@ -1,7 +1,6 @@
-# path: server/api/nuclear.py (extend with /engage and updated re-enable)
+# path: server/api/nuclear.py
 from __future__ import annotations
 
-import base64
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -10,6 +9,7 @@ from pydantic import BaseModel
 from config.settings import settings
 from ops.audit.immutable_audit import append_event
 from security.nuclear import day_nonce, verify
+from shared.events.bus import bus
 from shared.state.nuclear import clear as clear_nuclear, is_active, last_nonce_used, set_last_nonce
 from shared.state.runtime import LockdownState, set_lockdown
 
@@ -48,4 +48,5 @@ def reenable_route(payload: SignaturePayload):
     set_last_nonce(nonce)
     set_lockdown(LockdownState.NONE)
     append_event({"evt": "NUCLEAR_RESUMED", "payload": {"nonce": nonce}})
+    bus.emit("NUCLEAR_RESUMED", nonce=nonce)
     return {"status": "ok"}
