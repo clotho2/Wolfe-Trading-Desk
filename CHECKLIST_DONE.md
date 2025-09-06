@@ -45,3 +45,6 @@
 - Expand dashboard panels for digest preview and live event stream.
 - Wire FTMO profile into account selection and order gating flow.
 - Extend ComplianceGuard with slippage SLO windowing tests.
+
+## Utilities — Commit 27
+- **27**: Event-bus test helpers (`shared/events/bus_testutils.py`) + `.gitkeep` for `logs/` and `logs/shadow/` so fresh clones retain paths. Tests added under `tests/events/test_bus_testutils.py`.
