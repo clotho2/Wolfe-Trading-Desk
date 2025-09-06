@@ -9,12 +9,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from config.settings import settings
 from ops.audit.immutable_audit import append_event
+from shared.events.bus import bus
 from shared.state.nuclear import clear as clear_state, engage as set_state, is_active
 from shared.state.runtime import LockdownState, set_lockdown
 
 
 def day_nonce(now: Optional[datetime] = None, tz: str = "Europe/Prague") -> str:
-    # Format YYYYMMDD in Prague TZ
     import zoneinfo
 
     dt = (now or datetime.now(timezone.utc)).astimezone(zoneinfo.ZoneInfo(tz))
@@ -38,11 +38,10 @@ async def engage() -> None:
         return
     set_state()
     set_lockdown(LockdownState.SPLIT_BRAIN)
-    # Try to flat all via registered adapter
     from core.executor.registry import get_adapter
 
     adapter = get_adapter("mt5") or get_adapter(None)
     if adapter is not None:
         await adapter.flat_all("nuclear")
     append_event({"evt": "NUCLEAR_LOCKED", "payload": {}})
-
+    bus.emit("NUCLEAR_LOCKED")
