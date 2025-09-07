@@ -43,3 +43,14 @@ class _Bus:
 
 
 bus = _Bus()
+
+
+async def publish(event_data: dict) -> None:
+    """Publish an event to the bus.
+    
+    Args:
+        event_data: Dictionary containing 'evt' and 'payload' keys
+    """
+    evt = event_data.get("evt", "UNKNOWN")
+    payload = event_data.get("payload", {})
+    bus.emit(evt, **payload)
