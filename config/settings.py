@@ -1,7 +1,7 @@
 # path: config/settings.py (add FTMO fields)
 from __future__ import annotations
 from enum import Enum
-from typing import Tuple, Literal, Callable, Any
+from typing import Tuple, Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -97,12 +97,18 @@ class Settings(BaseSettings):
     @classmethod
     def settings_customise_sources(
         cls,
-        init_settings: Callable[..., Any],
-        env_settings: Callable[..., Any],
-        dotenv_settings: Callable[..., Any],
-        file_secret_settings: Callable[..., Any],
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
     ):
-        return (lambda: yaml_settings_source(), dotenv_settings, env_settings, init_settings, file_secret_settings)
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            lambda: yaml_settings_source(),
+            file_secret_settings,
+        )
 
 
 settings = Settings()
