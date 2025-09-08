@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Callable, Literal, Tuple
+from typing import Any, Literal, Tuple
 
 from pydantic import Field, field_validator
 from pydantic_settings import (
@@ -12,7 +12,7 @@ from pydantic_settings import (
 )
 
 from .loader import yaml_settings_source
-from .models import Adapters, AppConfig, Broker, BrokerMT5, Executor, Features, Safety
+from .models import Adapters, Broker, BrokerMT5, Executor, Features, Safety
 
 
 class ExecutorMode(str, Enum):
@@ -21,16 +21,25 @@ class ExecutorMode(str, Enum):
     LIVE = "LIVE"
 
 
-# Custom YAML source (lowest precedence): maps YAML → our flat + nested keys
 class _YamlMirrorSource(PydanticBaseSettingsSource):
+    """pydantic-settings v2 settings source that feeds values from YAML.
+
+    Lowest precedence; allows ENV and .env to override.
+    """
+
     def __init__(self, settings_cls: type[BaseSettings]):
         super().__init__(settings_cls)
+        # Preload once; returns a flat+nested dict compatible with our fields
+        self._data: dict[str, Any] = yaml_settings_source()
 
-    def __call__(self) -> dict[str, Any]:  # returns a flat dict of field→value
-        # Our loader flattens/mirrors nested YAML to match Settings fields
-        # (keeps env mirrors like CORR_WINDOW_DAYS in sync while also passing
-        # through nested sections such as broker/watchlist/...)
-        return yaml_settings_source()
+    def get_field_value(
+        self,
+        field,  # pydantic.fields.FieldInfo (kept untyped to avoid import churn)
+        field_name: str,
+    ) -> tuple[Any, str | None, dict[str, Any] | None]:
+        if field_name in self._data:
+            return self._data[field_name], field_name, self._data
+        return None, None, None
 
 
 class Settings(BaseSettings):
@@ -38,7 +47,7 @@ class Settings(BaseSettings):
         env_file=".env",
         extra="ignore",
         case_sensitive=False,
-        env_nested_delimiter="__",  # enables BROKER__MT5__SERVER style overrides
+        env_nested_delimiter="__",
         nested_model_default_partial_update=True,
     )
 
@@ -110,7 +119,7 @@ class Settings(BaseSettings):
     FEATURES_GAP_GUARD: bool = False
     FEATURES_RISK_ADAPTER: bool = False
 
-    # ── New: nested app config surfaced from YAML (overridable via env) ─────
+    # Nested app config (from YAML; overridable via env)
     broker: Broker = Field(default_factory=lambda: Broker(mt5=BrokerMT5(server="", login="", password="")))
     adapters: Adapters = Field(default_factory=Adapters)
     watchlist: list[str] = Field(default_factory=list)
@@ -124,8 +133,6 @@ class Settings(BaseSettings):
             return self.REDIS_URL
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
-    # IMPORTANT: pydantic-settings v2 signature, and return order defines priority
-    # Priority (highest → lowest): init kwargs > ENV > .env > file secrets > YAML
     @classmethod
     def settings_customise_sources(
         cls,
@@ -135,14 +142,14 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Priority high→low: init > ENV > .env > secrets > YAML
         return (
             init_settings,
             env_settings,
             dotenv_settings,
             file_secret_settings,
-            _YamlMirrorSource(settings_cls),  # YAML last (lowest precedence)
+            _YamlMirrorSource(settings_cls),
         )
 
 
-# Export a singleton Settings that now includes nested app config
 settings = Settings()
