@@ -25,16 +25,20 @@ class _YamlMirrorSource(PydanticBaseSettingsSource):
     """pydantic-settings v2 settings source that feeds values from YAML.
 
     Lowest precedence; allows ENV and .env to override.
+    Implements both `__call__` and `get_field_value` as required by v2.
     """
 
     def __init__(self, settings_cls: type[BaseSettings]):
         super().__init__(settings_cls)
-        # Preload once; returns a flat+nested dict compatible with our fields
         self._data: dict[str, Any] = yaml_settings_source()
+
+    def __call__(self) -> dict[str, Any]:
+        # Return a mapping of field_name → value
+        return self._data
 
     def get_field_value(
         self,
-        field,  # pydantic.fields.FieldInfo (kept untyped to avoid import churn)
+        field,  # pydantic.fields.FieldInfo
         field_name: str,
     ) -> tuple[Any, str | None, dict[str, Any] | None]:
         if field_name in self._data:
