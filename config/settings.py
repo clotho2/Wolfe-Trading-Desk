@@ -5,7 +5,11 @@ from enum import Enum
 from typing import Any, Callable, Literal, Tuple
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 from .loader import yaml_settings_source
 from .models import Adapters, AppConfig, Broker, BrokerMT5, Executor, Features, Safety
@@ -17,12 +21,25 @@ class ExecutorMode(str, Enum):
     LIVE = "LIVE"
 
 
+# Custom YAML source (lowest precedence): maps YAML → our flat + nested keys
+class _YamlMirrorSource(PydanticBaseSettingsSource):
+    def __init__(self, settings_cls: type[BaseSettings]):
+        super().__init__(settings_cls)
+
+    def __call__(self) -> dict[str, Any]:  # returns a flat dict of field→value
+        # Our loader flattens/mirrors nested YAML to match Settings fields
+        # (keeps env mirrors like CORR_WINDOW_DAYS in sync while also passing
+        # through nested sections such as broker/watchlist/...)
+        return yaml_settings_source()
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",
         case_sensitive=False,
         env_nested_delimiter="__",  # enables BROKER__MT5__SERVER style overrides
+        nested_model_default_partial_update=True,
     )
 
     NODE_ID: str = "EX-44-PRIMARY"
@@ -107,16 +124,24 @@ class Settings(BaseSettings):
             return self.REDIS_URL
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
 
+    # IMPORTANT: pydantic-settings v2 signature, and return order defines priority
+    # Priority (highest → lowest): init kwargs > ENV > .env > file secrets > YAML
     @classmethod
     def settings_customise_sources(
         cls,
-        init_settings: Callable[..., Any],
-        env_settings: Callable[..., Any],
-        dotenv_settings: Callable[..., Any],
-        file_secret_settings: Callable[..., Any],
-    ):
-        # Precedence: YAML < .env < OS env < init
-        return (lambda: yaml_settings_source(), dotenv_settings, env_settings, init_settings, file_secret_settings)
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+            _YamlMirrorSource(settings_cls),  # YAML last (lowest precedence)
+        )
 
 
 # Export a singleton Settings that now includes nested app config
