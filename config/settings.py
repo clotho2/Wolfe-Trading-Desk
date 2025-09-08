@@ -1,12 +1,14 @@
-# path: config/settings.py (add FTMO fields)
+# path: config/settings.py
 from __future__ import annotations
-from enum import Enum
-from typing import Tuple, Literal
 
-from pydantic import field_validator
+from enum import Enum
+from typing import Any, Callable, Literal, Tuple
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .loader import yaml_settings_source
+from .models import Adapters, AppConfig, Broker, BrokerMT5, Executor, Features, Safety
 
 
 class ExecutorMode(str, Enum):
@@ -16,7 +18,12 @@ class ExecutorMode(str, Enum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
+        env_nested_delimiter="__",  # enables BROKER__MT5__SERVER style overrides
+    )
 
     NODE_ID: str = "EX-44-PRIMARY"
     EXECUTOR_MODE: ExecutorMode = ExecutorMode.DRY_RUN
@@ -60,33 +67,39 @@ class Settings(BaseSettings):
 
     RISK_RATCHET_HALF_AFTER_RED_DAYS: int = 2
 
+    # Adaptive Risk
     RISK_MODE: Literal["ratchet", "adaptive", "both"] = "ratchet"
     RISK_FLOOR_PCT: float = 0.25
     RISK_CEILING_PCT: float = 1.50
 
+    # Correlation controls
     CORR_WINDOW_DAYS: int = 20
     CORR_BLOCK_THRESHOLD: float = 0.70
     CORR_THRESHOLD_ACTION: Literal["block", "halve"] = "block"
     DXY_BAND_PCT: float = 0.002
 
+    # Gap/Corp-action
     GAP_ALERT_PCT: float = 0.15
-
-    # FTMO profile mirrors
-    FTMO_PHASE1_PACING_BONUS_PCT: float = 7.0
-    FTMO_PHASE2_MAX_PER_TRADE_RISK_PCT: float = 0.5
-    FTMO_FRIDAY_CUTOFF_GMT: str = "14:00"
 
     # Dashboard
     DASH_PORT: int = 9090
     DASH_TOKEN: str = "change-me"
 
-    # Features
+    # Features (flat env mirrors)
     FEATURES_HA_DRILLS: bool = False
     FEATURES_AUTO_FLAT_ALL_ON_LOCK_LOSS: bool = False
     FEATURES_HA_STATUS_BADGE: bool = True
     FEATURES_AUTO_REGISTER_MT5: bool = False
     FEATURES_GAP_GUARD: bool = False
     FEATURES_RISK_ADAPTER: bool = False
+
+    # ── New: nested app config surfaced from YAML (overridable via env) ─────
+    broker: Broker = Field(default_factory=lambda: Broker(mt5=BrokerMT5(server="", login="", password="")))
+    adapters: Adapters = Field(default_factory=Adapters)
+    watchlist: list[str] = Field(default_factory=list)
+    executor: Executor = Field(default_factory=Executor)
+    safety: Safety = Field(default_factory=Safety)
+    features: Features = Field(default_factory=Features)
 
     @property
     def REDIS_URL_EFFECTIVE(self) -> str:
@@ -97,19 +110,14 @@ class Settings(BaseSettings):
     @classmethod
     def settings_customise_sources(
         cls,
-        settings_cls,
-        init_settings,
-        env_settings,
-        dotenv_settings,
-        file_secret_settings,
+        init_settings: Callable[..., Any],
+        env_settings: Callable[..., Any],
+        dotenv_settings: Callable[..., Any],
+        file_secret_settings: Callable[..., Any],
     ):
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            lambda: yaml_settings_source(),
-            file_secret_settings,
-        )
+        # Precedence: YAML < .env < OS env < init
+        return (lambda: yaml_settings_source(), dotenv_settings, env_settings, init_settings, file_secret_settings)
 
 
+# Export a singleton Settings that now includes nested app config
 settings = Settings()
