@@ -1,23 +1,60 @@
-# path: config/default.yaml (append risk + features.risk_adapter)
+# path: config/default.yaml
+
 leader:
   provider: redis
+
 modes:
-  executor_mode: SHADOW  # LIVE | DRY_RUN | SHADOW
+  # Effective runtime key used by the loader → EXECUTOR_MODE
+  executor_mode: LIVE   # LIVE | DRY_RUN | SHADOW
+
 correlation:
   window_days: 20
   block_threshold: 0.70
   block_threshold_action: block  # or halve
   dxy_band_pct: 0.002
+
 gap:
   alert_pct: 0.15
+
 risk:
   mode: ratchet
   floor_pct: 0.25
   ceiling_pct: 1.50
+
+# ── Added per request ─────────────────────────────────────────────────────────
+broker:
+  provider: mt5
+  mt5:
+    server: OANDA-Demo-1        # <-- match your demo server EXACTLY
+    login: 1600016688
+    password: "8gf@8@WB"        # NOTE: consider moving secrets to .env
+
+adapters:
+  mt5:
+    enabled: true               # ensure adapter actually turns on
+
+watchlist:
+  - EURUSD
+  - USDCHF
+  - NZDUSD
+  - AUDCAD
+  - CADCHF
+  - EURAUD
+  - EURCAD
+  - EURCHF
+  - NZDCAD
+  - NZDCHF
+
+executor:
+  mode: LIVE                    # informational; loader maps modes.executor_mode
+
+safety:
+  no_live: false
+
 features:
   ha_drills: false
   ha_status_badge: true
-  auto_flat_all_on_lock_loss: false
+  auto_flat_all_on_lock_loss: true
   auto_register_mt5: false
-  gap_guard: false
-  risk_adapter: false
+  gap_guard: true
+  risk_adapter: true
