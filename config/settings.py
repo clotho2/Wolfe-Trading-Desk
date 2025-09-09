@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal, Tuple
+from typing import Any, Literal, Tuple, Union, Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ValidationError
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -126,7 +126,7 @@ class Settings(BaseSettings):
     # Nested app config (from YAML; overridable via env)
     broker: Broker = Field(default_factory=lambda: Broker(mt5=BrokerMT5(server="", login="", password="")))
     adapters: Adapters = Field(default_factory=Adapters)
-    watchlist: list[str] = Field(default_factory=list)
+    watchlist: list[str] = Field(default_factory=list, json_schema_extra={"format": "comma-separated"})
     executor: Executor = Field(default_factory=Executor)
     safety: Safety = Field(default_factory=Safety)
     features: Features = Field(default_factory=Features)
@@ -135,15 +135,35 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_watchlist(cls, v):
         """Parse watchlist from various sources (YAML list, env string, etc.)"""
-        if v is None:
+        # Handle None or empty cases first
+        if v is None or v == "":
             return []
+        
         if isinstance(v, list):
             return v
+        
         if isinstance(v, str):
-            # Handle comma-separated string from environment
-            if v.strip():
+            # Handle empty string case - this prevents the JSON parsing error
+            if not v.strip():
+                return []
+            
+            # Special handling for common empty cases that might cause JSON errors
+            if v.strip() in ('""', "''", '[]', '{}'):
+                return []
+            
+            # Try to parse as JSON first (for pydantic-settings compatibility)
+            try:
+                import json
+                result = json.loads(v)
+                if isinstance(result, list):
+                    return result
+                # If it's not a list, treat as single item
+                return [str(result)]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                # Fall back to comma-separated string parsing
                 return [item.strip() for item in v.split(",") if item.strip()]
-            return []
+        
+        # Handle any other type by returning empty list
         return []
 
     @property
@@ -171,4 +191,13 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()
+try:
+    settings = Settings()
+except Exception as e:
+    if "watchlist" in str(e) and "JSONDecodeError" in str(e):
+        # Handle the watchlist JSON parsing error by setting a default value
+        import os
+        os.environ.setdefault("WATCHLIST", "[]")
+        settings = Settings()
+    else:
+        raise
