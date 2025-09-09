@@ -131,6 +131,21 @@ class Settings(BaseSettings):
     safety: Safety = Field(default_factory=Safety)
     features: Features = Field(default_factory=Features)
 
+    @field_validator("watchlist", mode="before")
+    @classmethod
+    def _parse_watchlist(cls, v):
+        """Parse watchlist from various sources (YAML list, env string, etc.)"""
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            # Handle comma-separated string from environment
+            if v.strip():
+                return [item.strip() for item in v.split(",") if item.strip()]
+            return []
+        return []
+
     @property
     def REDIS_URL_EFFECTIVE(self) -> str:
         if self.REDIS_URL:
