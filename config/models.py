@@ -3,13 +3,19 @@ from __future__ import annotations
 
 from typing import List, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class BrokerMT5(BaseModel):
     server: str
     login: str
     password: str
+
+    @field_validator("login", mode="before")
+    @classmethod
+    def _convert_login_to_string(cls, v):
+        """Convert login to string if it's an integer"""
+        return str(v) if v is not None else ""
 
 
 class Broker(BaseModel):
