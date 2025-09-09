@@ -1,4 +1,4 @@
-# path: config/loader.py (map ftmo.*)
+# path: config/loader.py
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,11 +21,25 @@ def _read_yaml(path: Path) -> Dict[str, Any]:
 
 
 def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a dict used as the lowest-precedence settings source.
+
+    Includes both:
+      • flat mirrors used by legacy env keys, and
+      • nested sections (broker/adapters/watchlist/executor/safety/features)
+        so Pydantic can bind them directly to nested models.
+    """
     out: Dict[str, Any] = {}
+
+    # ── nested sections (pass-through) ───────────────────────────────────────
+    for k in ("broker", "adapters", "watchlist", "executor", "safety", "features"):
+        if k in doc:
+            out[k] = doc[k]
+
+    # ── existing mirrors (keep legacy env support) ───────────────────────────
     mode = (doc.get("modes", {}) or {}).get("executor_mode")
     if mode:
         out["EXECUTOR_MODE"] = str(mode).upper()
-    # correlation
+
     corr = doc.get("correlation", {}) or {}
     if "window_days" in corr:
         out["CORR_WINDOW_DAYS"] = int(corr["window_days"])
@@ -35,11 +49,11 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
         out["CORR_THRESHOLD_ACTION"] = str(corr["block_threshold_action"]).lower()
     if "dxy_band_pct" in corr:
         out["DXY_BAND_PCT"] = float(corr["dxy_band_pct"])
-    # gap
+
     gap = doc.get("gap", {}) or {}
     if "alert_pct" in gap:
         out["GAP_ALERT_PCT"] = float(gap["alert_pct"])
-    # features
+
     feats = doc.get("features", {}) or {}
     if "ha_drills" in feats:
         out["FEATURES_HA_DRILLS"] = bool(feats["ha_drills"])  # noqa: FBT003
@@ -53,7 +67,7 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
         out["FEATURES_GAP_GUARD"] = bool(feats["gap_guard"])  # noqa: FBT003
     if "risk_adapter" in feats:
         out["FEATURES_RISK_ADAPTER"] = bool(feats["risk_adapter"])  # noqa: FBT003
-    # risk
+
     risk = doc.get("risk", {}) or {}
     if "mode" in risk:
         out["RISK_MODE"] = str(risk["mode"]).lower()
@@ -61,7 +75,7 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
         out["RISK_FLOOR_PCT"] = float(risk["floor_pct"])
     if "ceiling_pct" in risk:
         out["RISK_CEILING_PCT"] = float(risk["ceiling_pct"])
-    # ftmo
+
     ftmo = doc.get("ftmo", {}) or {}
     if "phase1_pacing_bonus_pct" in ftmo:
         out["FTMO_PHASE1_PACING_BONUS_PCT"] = float(ftmo["phase1_pacing_bonus_pct"])
@@ -73,6 +87,18 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
     prof = (doc.get("profile") or "").strip().lower()
     if prof:
         out["PROFILE"] = prof
+
+    # Leader / Redis optional mirrors
+    leader = doc.get("leader", {}) or {}
+    if "lock_ttl_ms" in leader:
+        out["LOCK_TTL_MS"] = int(leader["lock_ttl_ms"])
+    if "heartbeat_ms" in leader:
+        out["HEARTBEAT_MS"] = int(leader["heartbeat_ms"])
+    if "lock_key" in leader:
+        out["HA_LOCK_KEY"] = str(leader["lock_key"]) 
+    if "redis_url" in leader:
+        out["REDIS_URL"] = str(leader["redis_url"]) 
+
     return out
 
 
@@ -82,3 +108,4 @@ def yaml_settings_source() -> Dict[str, Any]:
     profile = _map_yaml_to_env_keys(prof_doc) if prof_doc else {}
     base.update(profile)
     return base
+

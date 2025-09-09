@@ -38,9 +38,9 @@ async def engage() -> None:
         return
     set_state()
     set_lockdown(LockdownState.SPLIT_BRAIN)
-    from core.executor.registry import get_adapter
+    from shared.services.registry import get_adapter
 
-    adapter = get_adapter("mt5") or get_adapter(None)
+    adapter = get_adapter()
     if adapter is not None:
         await adapter.flat_all("nuclear")
     append_event({"evt": "NUCLEAR_LOCKED", "payload": {}})
