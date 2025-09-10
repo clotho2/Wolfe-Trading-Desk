@@ -122,6 +122,7 @@ class Settings(BaseSettings):
     FEATURES_AUTO_REGISTER_MT5: bool = False
     FEATURES_GAP_GUARD: bool = False
     FEATURES_RISK_ADAPTER: bool = False
+    FEATURES_STRATEGY_PILOT: bool = False
 
     # Nested app config (from YAML; overridable via env)
     broker: Broker = Field(default_factory=lambda: Broker(mt5=BrokerMT5(server="", login="", password="")))

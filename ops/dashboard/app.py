@@ -79,7 +79,8 @@ async def _startup():
     print("=" * 60 + "\n")
     
     await start_ha(app, Settings())
-    if settings.FEATURES_AUTO_REGISTER_MT5 and settings.ENV in {"dev", "test"}:
+    # Always start executor in dev/test environments, or if auto-register is enabled
+    if settings.ENV in {"dev", "test"} or settings.FEATURES_AUTO_REGISTER_MT5:
         start_executor(Settings())
     
     # Load strategies if feature is enabled
