@@ -1,1 +1,8 @@
 {"ts": 1757206489.4444442, "reason": "TEST_EVENT", "payload": {"test": "data"}}
+{"ts": 1757517217.5761998, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "BUY", "symbol": "EURUSD", "size": 0.01, "fast_sma": null, "slow_sma": null, "result": "DRY_RUN"}}
+{"ts": 1757517217.576326, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "BUY", "symbol": "EURUSD", "size": 0.01, "fast_sma": null, "slow_sma": null, "result": "DRY_RUN"}}
+{"ts": 1757517217.5763907, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "SELL", "symbol": "EURUSD", "size": 0.01, "fast_sma": null, "slow_sma": null, "result": "DRY_RUN"}}
+{"ts": 1757517345.5392334, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "BUY", "symbol": "EURUSD", "size": 0.01, "fast_sma": 1.1000050000000001, "slow_sma": 1.1000020000000001, "result": "TEST"}}
+{"ts": 1757517345.5394692, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "SELL", "symbol": "EURUSD", "size": 0.01, "fast_sma": 1.1004550000000002, "slow_sma": 1.1004880000000001, "result": "TEST"}}
+{"ts": 1757517359.200277, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "BUY", "symbol": "EURUSD", "size": 0.01, "fast_sma": 1.1000050000000001, "slow_sma": 1.1000020000000001, "result": "TEST"}}
+{"ts": 1757517359.2005548, "reason": "STRATEGY_SIGNAL", "payload": {"strategy": "pilot_sma", "side": "SELL", "symbol": "EURUSD", "size": 0.01, "fast_sma": 1.1004550000000002, "slow_sma": 1.1004880000000001, "result": "TEST"}}

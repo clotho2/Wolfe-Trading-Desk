@@ -59,3 +59,13 @@ features:
   auto_register_mt5: false
   gap_guard: true
   risk_adapter: true
+  strategy_pilot: true
+
+strategies:
+  enabled:
+    - pilot_sma
+  pilot_sma:
+    symbol: EURUSD
+    size: 0.01
+    fast: 20
+    slow: 50

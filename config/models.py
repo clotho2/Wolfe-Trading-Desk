@@ -1,7 +1,7 @@
 # path: config/models.py
 from __future__ import annotations
 
-from typing import List, Literal
+from typing import Dict, List, Literal, Optional, Any
 
 from pydantic import BaseModel, field_validator
 
@@ -40,6 +40,19 @@ class Features(BaseModel):
     risk_adapter: bool = False
     ha_status_badge: bool = True
     gap_guard: bool = True
+    strategy_pilot: bool = False
+
+
+class PilotSMAConfig(BaseModel):
+    symbol: str = "EURUSD"
+    size: float = 0.01
+    fast: int = 20
+    slow: int = 50
+
+
+class Strategies(BaseModel):
+    enabled: List[str] = []
+    pilot_sma: Optional[PilotSMAConfig] = None
 
 
 class AppConfig(BaseModel):
@@ -49,3 +62,4 @@ class AppConfig(BaseModel):
     executor: Executor = Executor()
     safety: Safety = Safety()
     features: Features = Features()
+    strategies: Optional[Strategies] = None
