@@ -37,13 +37,14 @@ watchlist:
   - EURUSD
   - USDCHF
   - NZDUSD
-  - AUDCAD
-  - CADCHF
-  - EURAUD
-  - EURCAD
-  - EURCHF
-  - NZDCAD
-  - NZDCHF
+  # Expanded watchlist (for future use):
+  # - AUDCAD
+  # - CADCHF
+  # - EURAUD
+  # - EURCAD
+  # - EURCHF
+  # - NZDCAD
+  # - NZDCHF
 
 executor:
   mode: LIVE                    # informational; loader maps modes.executor_mode
