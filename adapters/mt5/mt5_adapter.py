@@ -8,6 +8,8 @@ from typing import Dict, List, Optional, TypedDict
 
 from config.settings import settings
 from .base import AdapterHealth, BrokerAdapter, ExecReport, Order
+from pathlib import Path
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,13 @@ class MT5Adapter(BrokerAdapter):
         self._initialize_connection()
 
     def place_order(self, order: Order) -> ExecReport:
+        # Log the order for visualization
+        self._log_trade_event("order_placed", {
+            "symbol": order.symbol,
+            "side": order.side,
+            "qty": order.qty,
+            "timestamp": datetime.utcnow().isoformat()
+        })
         return ExecReport(status="DRY_RUN", order=order)
 
     def modify_order(self, order_id: str, **kwargs) -> ExecReport:
@@ -168,3 +177,21 @@ class MT5Adapter(BrokerAdapter):
             "watchlist_count": len(self.watchlist_symbols),
             "mode": self.settings.EXECUTOR_MODE.value if hasattr(self.settings.EXECUTOR_MODE, "value") else str(self.settings.EXECUTOR_MODE)
         }
+    
+    def _log_trade_event(self, event_type: str, data: Dict) -> None:
+        """Log trade events for dashboard visualization."""
+        events_file = Path("logs/events.jsonl")
+        events_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        event = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "event": event_type,
+            "data": data,
+            "mode": self.settings.EXECUTOR_MODE.value if hasattr(self.settings.EXECUTOR_MODE, "value") else str(self.settings.EXECUTOR_MODE)
+        }
+        
+        try:
+            with events_file.open("a") as f:
+                f.write(json.dumps(event) + "\n")
+        except Exception:
+            pass  # Silently fail to not disrupt trading
