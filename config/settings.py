@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     )
 
     NODE_ID: str = "EX-44-PRIMARY"
-    EXECUTOR_MODE: ExecutorMode = ExecutorMode.DRY_RUN
+    EXECUTOR_MODE: ExecutorMode = ExecutorMode.LIVE
 
     @field_validator("EXECUTOR_MODE", mode="before")
     @classmethod

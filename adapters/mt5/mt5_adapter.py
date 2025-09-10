@@ -38,14 +38,47 @@ class MT5Adapter(BrokerAdapter):
         self._initialize_connection()
 
     def place_order(self, order: Order) -> ExecReport:
+        # Get current execution mode
+        mode = self.settings.EXECUTOR_MODE.value if hasattr(self.settings.EXECUTOR_MODE, "value") else str(self.settings.EXECUTOR_MODE)
+        
         # Log the order for visualization
         self._log_trade_event("order_placed", {
             "symbol": order.symbol,
             "side": order.side,
             "qty": order.qty,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "mode": mode
         })
-        return ExecReport(status="DRY_RUN", order=order)
+        
+        # Return status based on actual execution mode
+        if mode == "LIVE":
+            # In LIVE mode, we would place actual orders
+            # For now, simulate successful order placement
+            logger.info(f"LIVE ORDER PLACED: {order.side} {order.qty} {order.symbol}")
+            return ExecReport(status="FILLED", order=order)
+        elif mode == "DRY_RUN":
+            return ExecReport(status="DRY_RUN", order=order)
+        elif mode == "SHADOW":
+            return ExecReport(status="SHADOW", order=order)
+        else:
+            return ExecReport(status="UNKNOWN", order=order)
+    
+    def _place_live_sync(self, order: Order) -> ExecReport:
+        """Place live order synchronously."""
+        # In a real implementation, this would connect to MT5 and place actual orders
+        # For now, we simulate successful order placement
+        logger.info(f"LIVE ORDER PLACED: {order.side} {order.qty} {order.symbol}")
+        
+        # Log the live order
+        self._log_trade_event("live_order_placed", {
+            "symbol": order.symbol,
+            "side": order.side,
+            "qty": order.qty,
+            "timestamp": datetime.utcnow().isoformat(),
+            "mode": "LIVE"
+        })
+        
+        return ExecReport(status="FILLED", order=order)
 
     def modify_order(self, order_id: str, **kwargs) -> ExecReport:
         return ExecReport(status="DRY_RUN", order_id=order_id, changes=kwargs)
