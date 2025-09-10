@@ -22,7 +22,7 @@ def start_executor(settings: Settings) -> None:
         return
     
     logger.info("Registering MT5 adapter...")
-    _adapter = MT5Adapter(settings=settings)
+    _adapter = MT5Adapter(_settings=settings)
     
     if settings.EXECUTOR_MODE.value == "LIVE":
         _adapter.assert_live_allowed()
