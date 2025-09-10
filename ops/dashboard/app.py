@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from config.settings import ExecutorMode, Settings, settings
 from core.executor.bootstrap import start_executor
+from core.executor.loop import load_strategies
 from engine.timebox import now_prague, prague_reset_countdown
 from gateway.http.middleware import install_mode_watermark
 from ops.audit.immutable_audit import append_event
@@ -19,6 +20,7 @@ from server.api.adapter import router as adapter_router
 from server.api.ha import router as ha_router
 from server.api.health import router as health_router
 from server.api.nuclear import router as nuclear_router
+from server.api.strategy import router as strategy_router
 from server.api.trades import router as trades_router
 from server.api.websocket import router as websocket_router
 
@@ -28,6 +30,7 @@ app.include_router(adapter_router)
 app.include_router(ha_router)
 app.include_router(health_router)
 app.include_router(nuclear_router)
+app.include_router(strategy_router)
 app.include_router(trades_router)
 app.include_router(websocket_router)
 
@@ -60,6 +63,7 @@ async def _startup():
     print(f"HA Status Badge: {settings.FEATURES_HA_STATUS_BADGE}")
     print(f"Gap Guard: {settings.FEATURES_GAP_GUARD}")
     print(f"Risk Adapter: {settings.FEATURES_RISK_ADAPTER}")
+    print(f"Strategy Pilot: {getattr(settings.features, 'strategy_pilot', False) if hasattr(settings, 'features') else False}")
     
     # HA Configuration
     print(f"HA Lock TTL: {settings.LOCK_TTL_MS}ms")
@@ -77,6 +81,13 @@ async def _startup():
     await start_ha(app, Settings())
     if settings.FEATURES_AUTO_REGISTER_MT5 and settings.ENV in {"dev", "test"}:
         start_executor(Settings())
+    
+    # Load strategies if feature is enabled
+    load_strategies(Settings())
+    from core.executor.loop import get_strategy_status
+    strategies = get_strategy_status()
+    if strategies:
+        print(f"Loaded {len(strategies)} strategies: {[s.get('strategy', 'unknown') for s in strategies]}")
 
 
 def require_token(authorization: Optional[str] = Header(None)):

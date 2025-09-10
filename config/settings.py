@@ -12,7 +12,7 @@ from pydantic_settings import (
 )
 
 from .loader import yaml_settings_source
-from .models import Adapters, Broker, BrokerMT5, Executor, Features, Safety
+from .models import Adapters, Broker, BrokerMT5, Executor, Features, Safety, Strategies
 
 
 class ExecutorMode(str, Enum):
@@ -130,6 +130,7 @@ class Settings(BaseSettings):
     executor: Executor = Field(default_factory=Executor)
     safety: Safety = Field(default_factory=Safety)
     features: Features = Field(default_factory=Features)
+    strategies: Strategies = Field(default_factory=Strategies)
 
     @field_validator("watchlist", mode="before")
     @classmethod

@@ -31,7 +31,7 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
 
     # ── nested sections (pass-through) ───────────────────────────────────────
-    for k in ("broker", "adapters", "watchlist", "executor", "safety", "features"):
+    for k in ("broker", "adapters", "watchlist", "executor", "safety", "features", "strategies"):
         if k in doc:
             out[k] = doc[k]
 
