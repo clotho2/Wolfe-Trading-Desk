@@ -85,4 +85,25 @@ class BrokerAdapter:
         stamp = datetime.now(timezone.utc).isoformat()
         entry = {"ts": stamp, "op": op, "payload": payload}
         (SHADOW_DIR / f"shadow-{datetime.now().date().isoformat()}.jsonl").open("a").write(json.dumps(entry) + "\n")
+        
+        # Also log to events for visualization
+        self._log_trade_event(op, payload)
+    
+    def _log_trade_event(self, event_type: str, data: Dict[str, Any]) -> None:
+        """Log trade events for dashboard visualization."""
+        events_file = Path("logs/events.jsonl")
+        events_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        event = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "event": event_type,
+            "data": data,
+            "mode": str(getattr(settings.EXECUTOR_MODE, "value", settings.EXECUTOR_MODE))
+        }
+        
+        try:
+            with events_file.open("a") as f:
+                f.write(json.dumps(event) + "\n")
+        except Exception:
+            pass  # Silently fail to not disrupt trading
 
