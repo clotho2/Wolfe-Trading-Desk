@@ -40,15 +40,20 @@ class BrokerAdapter:
         self._book: Dict[str, float] = {}
 
     # ---- public API ----
-    async def place_order(self, order: Order) -> ExecReport:
-        if str(getattr(settings.EXECUTOR_MODE, "value", settings.EXECUTOR_MODE)) == "SHADOW":
+    def place_order(self, order: Order) -> ExecReport:
+        mode = str(getattr(settings.EXECUTOR_MODE, "value", settings.EXECUTOR_MODE))
+        
+        if mode == "SHADOW":
             self._shadow_log("place_order", order.__dict__)
             return ExecReport(status="SHADOW", order=order)
-        if str(getattr(settings.EXECUTOR_MODE, "value", settings.EXECUTOR_MODE)) == "DRY_RUN":
+        elif mode == "DRY_RUN":
             self._book[order.symbol] = self._book.get(order.symbol, 0.0) + (order.qty if order.side == "BUY" else -order.qty)
             return ExecReport(status="DRY_RUN", order=order)
-        # LIVE path should be implemented by concrete adapters
-        return await self._place_live(order)
+        elif mode == "LIVE":
+            # LIVE path should be implemented by concrete adapters
+            return self._place_live_sync(order)
+        else:
+            return ExecReport(status="UNKNOWN", order=order)
 
     async def modify_order(self, order_id: str, **kwargs) -> ExecReport:
         if str(getattr(settings.EXECUTOR_MODE, "value", settings.EXECUTOR_MODE)) == "SHADOW":
@@ -71,6 +76,9 @@ class BrokerAdapter:
         return AdapterHealth(status="ok")
 
     # ---- to override for LIVE ----
+    def _place_live_sync(self, order: Order) -> ExecReport:  # pragma: no cover - abstract
+        raise NotImplementedError
+    
     async def _place_live(self, order: Order) -> ExecReport:  # pragma: no cover - abstract
         raise NotImplementedError
 

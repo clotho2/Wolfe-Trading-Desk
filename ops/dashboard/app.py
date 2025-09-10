@@ -79,7 +79,8 @@ async def _startup():
     print("=" * 60 + "\n")
     
     await start_ha(app, Settings())
-    if settings.FEATURES_AUTO_REGISTER_MT5 and settings.ENV in {"dev", "test"}:
+    # Start executor for all environments when strategy pilot is enabled
+    if getattr(settings.features, 'strategy_pilot', False) or settings.FEATURES_STRATEGY_PILOT:
         start_executor(Settings())
     
     # Load strategies if feature is enabled

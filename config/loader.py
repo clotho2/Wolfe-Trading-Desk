@@ -67,6 +67,8 @@ def _map_yaml_to_env_keys(doc: Dict[str, Any]) -> Dict[str, Any]:
         out["FEATURES_GAP_GUARD"] = bool(feats["gap_guard"])  # noqa: FBT003
     if "risk_adapter" in feats:
         out["FEATURES_RISK_ADAPTER"] = bool(feats["risk_adapter"])  # noqa: FBT003
+    if "strategy_pilot" in feats:
+        out["FEATURES_STRATEGY_PILOT"] = bool(feats["strategy_pilot"])  # noqa: FBT003
 
     risk = doc.get("risk", {}) or {}
     if "mode" in risk:

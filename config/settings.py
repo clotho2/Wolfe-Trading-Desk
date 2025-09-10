@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     )
 
     NODE_ID: str = "EX-44-PRIMARY"
-    EXECUTOR_MODE: ExecutorMode = ExecutorMode.DRY_RUN
+    EXECUTOR_MODE: ExecutorMode = ExecutorMode.LIVE
 
     @field_validator("EXECUTOR_MODE", mode="before")
     @classmethod
@@ -122,6 +122,7 @@ class Settings(BaseSettings):
     FEATURES_AUTO_REGISTER_MT5: bool = False
     FEATURES_GAP_GUARD: bool = False
     FEATURES_RISK_ADAPTER: bool = False
+    FEATURES_STRATEGY_PILOT: bool = False
 
     # Nested app config (from YAML; overridable via env)
     broker: Broker = Field(default_factory=lambda: Broker(mt5=BrokerMT5(server="", login="", password="")))
