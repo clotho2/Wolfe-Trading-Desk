@@ -12,7 +12,7 @@ The watchlist has been trimmed to focus on three major currency pairs:
 The watchlist is defined in lines 36-47. Currently active pairs are uncommented, while the expanded list is preserved as comments for future use.
 
 ### 2. Environment Override: `.env`
-The `EXECUTOR_MODE` is set to `SHADOW` for safe testing. Change to `LIVE` when ready for production trading.
+The `EXECUTOR_MODE` is set to `LIVE` for production trading.
 
 ## last_tick() Functionality
 

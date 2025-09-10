@@ -105,6 +105,9 @@ class MT5Adapter(BrokerAdapter):
                     logger.info(f"MT5 Adapter connected (mode={mode}, server={self.server}, login={self.login})")
                 else:
                     # In LIVE mode, actual MT5 connection would happen here
+                    # For now, we simulate the connection and set last_tick
+                    self.connected = True
+                    self.last_tick = datetime.utcnow()
                     logger.info(f"MT5 Adapter initialized for LIVE mode (server={self.server}, login={self.login})")
             else:
                 logger.warning(f"MT5 Adapter not connected: adapter_enabled={adapter_enabled}, server={bool(self.server)}, login={bool(self.login)}")

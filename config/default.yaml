@@ -5,7 +5,7 @@ leader:
 
 modes:
   # Effective runtime key used by the loader → EXECUTOR_MODE
-  executor_mode: SHADOW   # LIVE | DRY_RUN | SHADOW
+  executor_mode: LIVE   # LIVE | DRY_RUN | SHADOW
 
 correlation:
   window_days: 20
@@ -47,7 +47,7 @@ watchlist:
   # - NZDCHF
 
 executor:
-  mode: SHADOW                  # informational; loader maps modes.executor_mode
+  mode: LIVE                    # informational; loader maps modes.executor_mode
 
 safety:
   no_live: false
