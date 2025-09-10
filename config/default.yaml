@@ -5,7 +5,7 @@ leader:
 
 modes:
   # Effective runtime key used by the loader → EXECUTOR_MODE
-  executor_mode: LIVE   # LIVE | DRY_RUN | SHADOW
+  executor_mode: SHADOW   # LIVE | DRY_RUN | SHADOW
 
 correlation:
   window_days: 20
@@ -37,16 +37,17 @@ watchlist:
   - EURUSD
   - USDCHF
   - NZDUSD
-  - AUDCAD
-  - CADCHF
-  - EURAUD
-  - EURCAD
-  - EURCHF
-  - NZDCAD
-  - NZDCHF
+  # Expanded watchlist (for future use):
+  # - AUDCAD
+  # - CADCHF
+  # - EURAUD
+  # - EURCAD
+  # - EURCHF
+  # - NZDCAD
+  # - NZDCHF
 
 executor:
-  mode: LIVE                    # informational; loader maps modes.executor_mode
+  mode: SHADOW                  # informational; loader maps modes.executor_mode
 
 safety:
   no_live: false
