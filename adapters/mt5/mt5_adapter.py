@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, TypedDict
 
 from config.settings import settings
 from .base import AdapterHealth, BrokerAdapter, ExecReport, Order
 from pathlib import Path
 import json
+from .bridge_client import MT5ZMQClient, BridgeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class MT5Adapter(BrokerAdapter):
         self.login = ""
         self.last_tick = None
         self.watchlist_symbols = set()
+        self._bridge: Optional[MT5ZMQClient] = None
         self._initialize_connection()
 
     def place_order(self, order: Order) -> ExecReport:
@@ -52,10 +54,12 @@ class MT5Adapter(BrokerAdapter):
         
         # Return status based on actual execution mode
         if mode == "LIVE":
-            # In LIVE mode, we would place actual orders
-            # For now, simulate successful order placement
-            logger.info(f"LIVE ORDER PLACED: {order.side} {order.qty} {order.symbol}")
-            return ExecReport(status="FILLED", order=order)
+            # Use bridge for real execution
+            try:
+                return self._place_live_sync(order)
+            except Exception as e:
+                logger.error(f"LIVE order failed: {e}")
+                return ExecReport(status="REJECTED", order=order)
         elif mode == "DRY_RUN":
             return ExecReport(status="DRY_RUN", order=order)
         elif mode == "SHADOW":
@@ -65,20 +69,22 @@ class MT5Adapter(BrokerAdapter):
     
     def _place_live_sync(self, order: Order) -> ExecReport:
         """Place live order synchronously."""
-        # In a real implementation, this would connect to MT5 and place actual orders
-        # For now, we simulate successful order placement
-        logger.info(f"LIVE ORDER PLACED: {order.side} {order.qty} {order.symbol}")
-        
-        # Log the live order
+        if not self._bridge:
+            raise RuntimeError("MT5 bridge not initialized")
+        meta = {"ts": datetime.now(timezone.utc).isoformat()}
+        resp = self._bridge.place_order(order.symbol, order.side, float(order.qty), meta)
+        status = "FILLED" if resp.get("ok") else "REJECTED"
+        order_id = str(resp.get("order_id")) if resp.get("order_id") is not None else None
         self._log_trade_event("live_order_placed", {
             "symbol": order.symbol,
             "side": order.side,
             "qty": order.qty,
             "timestamp": datetime.utcnow().isoformat(),
-            "mode": "LIVE"
+            "mode": "LIVE",
+            "bridge_status": status,
+            "order_id": order_id,
         })
-        
-        return ExecReport(status="FILLED", order=order)
+        return ExecReport(status=status, order=order, order_id=order_id)
 
     def modify_order(self, order_id: str, **kwargs) -> ExecReport:
         return ExecReport(status="DRY_RUN", order_id=order_id, changes=kwargs)
@@ -129,19 +135,27 @@ class MT5Adapter(BrokerAdapter):
                 adapter_enabled = self.settings.adapters.mt5.get('enabled', True)
             
             if adapter_enabled and self.server and self.login:
-                # In a real implementation, this would connect to MT5
-                # For now, we simulate connection for dry-run/shadow modes
                 mode = self.settings.EXECUTOR_MODE.value if hasattr(self.settings.EXECUTOR_MODE, "value") else str(self.settings.EXECUTOR_MODE)
                 if mode in ["DRY_RUN", "SHADOW"]:
                     self.connected = True
                     self.last_tick = datetime.utcnow()
                     logger.info(f"MT5 Adapter connected (mode={mode}, server={self.server}, login={self.login})")
                 else:
-                    # In LIVE mode, actual MT5 connection would happen here
-                    # For now, we simulate the connection and set last_tick
+                    # LIVE: start ZeroMQ bridge client
+                    bridge_cfg = {}
+                    if hasattr(self.settings, 'adapters') and hasattr(self.settings.adapters, 'mt5'):
+                        bridge_cfg = (self.settings.adapters.mt5 or {}).get('bridge', {})
+                    host = bridge_cfg.get('host', '127.0.0.1')
+                    pub_port = int(bridge_cfg.get('pub_port', 5556))
+                    req_port = int(bridge_cfg.get('req_port', 5557))
+                    token = bridge_cfg.get('token', 'change-me')
+                    symbols = [s.upper() for s in (self.settings.watchlist or [])]
+                    cfg = BridgeConfig(host=host, pub_port=pub_port, req_port=req_port, token=token, symbols=symbols)
+                    self._bridge = MT5ZMQClient(cfg, on_tick=self._on_bridge_tick)
+                    self._bridge.start()
                     self.connected = True
-                    self.last_tick = datetime.utcnow()
-                    logger.info(f"MT5 Adapter initialized for LIVE mode (server={self.server}, login={self.login})")
+                    self.last_tick = None
+                    logger.info(f"MT5 Adapter LIVE via bridge (server={self.server}, login={self.login}, bridge={host}:{pub_port}/{req_port})")
             else:
                 logger.warning(f"MT5 Adapter not connected: adapter_enabled={adapter_enabled}, server={bool(self.server)}, login={bool(self.login)}")
             
@@ -151,6 +165,20 @@ class MT5Adapter(BrokerAdapter):
         except Exception as e:
             logger.error(f"Failed to initialize MT5 connection: {e}")
             self.connected = False
+
+    def _on_bridge_tick(self, symbol: str, bid: float, ask: float, ts: datetime) -> None:
+        """Forward ticks from bridge to strategy pipeline."""
+        try:
+            self.last_tick = ts
+            # Forward to executor loop
+            try:
+                from core.executor.loop import process_tick
+                from strategies.pilot_sma import Tick
+                process_tick(Tick(symbol=symbol, bid=bid, ask=ask, timestamp=ts))
+            except Exception as e:
+                logger.error(f"Failed to forward tick: {e}")
+        except Exception:
+            pass
 
     def _subscribe_watchlist(self) -> None:
         """Subscribe to watchlist symbols and log any missing ones."""

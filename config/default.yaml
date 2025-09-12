@@ -32,6 +32,11 @@ broker:
 adapters:
   mt5:
     enabled: true               # ensure adapter actually turns on
+    bridge:
+      host: 127.0.0.1           # Windows MT5 bridge host or VPS IP
+      pub_port: 5556            # PUB/SUB port (ticks)
+      req_port: 5557            # REQ/REP port (orders)
+      token: "change-me"         # shared secret for simple auth
 
 watchlist:
   - EURUSD
